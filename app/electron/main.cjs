@@ -108,7 +108,19 @@ async function createWindow() {
     return;
   }
 
-  localServer = await startServer({ root, appVersion: app.getVersion() });
+  try {
+    localServer = await startServer({ root, appVersion: app.getVersion() });
+  } catch (err) {
+    bootLog('startServer failed: ' + String((err && err.message) || err));
+    dialog.showErrorBox(
+      '本地服务启动失败',
+      '无法在本机 127.0.0.1 上启动内置服务，程序无法继续。\n\n' +
+        String((err && err.message) || err) +
+        '\n\n常见原因：安全软件拦截本地端口、或系统保留了该端口段。可尝试重启电脑后再打开。'
+    );
+    app.quit();
+    return;
+  }
 
   mainWindow = new BrowserWindow({
     width: 1200,

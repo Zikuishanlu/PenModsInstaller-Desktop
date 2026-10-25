@@ -9,6 +9,7 @@
  *  - /api/dl   任意白名单地址下载代理（带进度、跟随重定向）
  */
 const http = require('http');
+const net = require('node:net');
 const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
@@ -409,13 +410,36 @@ async function startServer({ root, appVersion }) {
     serveStatic(req, res, root, url);
   });
   attachSshProxy(server);
-  try {
-    await listen(server, PREFERRED_PORT);
-  } catch {
-    // 端口被占用（例如上一次没退干净）就退回随机端口，保证能起来
-    await listen(server, 0);
+
+  // 先用临时 socket 探测端口是否真的能绑，再让正式 server 去绑。
+  // （直接对同一个 server 连续 listen 两次，Windows 上失败后容易拿到 address()===null，
+  //   表现为窗口空白且 url 是 http://127.0.0.1:null/，所以改成先探测。）
+  let port = 0;
+  for (let attempt = 0; attempt < 6 && !port; attempt++) {
+    const preferredThisTime = attempt === 0 ? PREFERRED_PORT : 0;
+    let candidate = 0;
+    const probe = net.createServer();
+    try {
+      candidate = await new Promise((resolve, reject) => {
+        probe.once('error', reject);
+        probe.listen(preferredThisTime, '127.0.0.1', () => resolve(probe.address().port));
+      });
+    } catch {
+      candidate = 0;
+    } finally {
+      await new Promise((r) => probe.close(r));
+    }
+    if (!candidate) continue;
+    try {
+      await listen(server, candidate);
+      const addr = server.address();
+      if (addr && addr.port) port = addr.port;
+    } catch {
+      /* 端口刚好被抢走，换一个再来 */
+    }
   }
-  return { server, port: server.address().port };
+  if (!port) throw new Error('本地服务启动失败：无法绑定 127.0.0.1 上的任何端口');
+  return { server, port };
 }
 
 module.exports = { startServer };
