@@ -28,6 +28,10 @@ jobs:
         working-directory: app
         run: npx tsc -b
 
+      - name: Build frontend
+        working-directory: app
+        run: npm run build
+
       - name: Build exe
         working-directory: app
         run: npx electron-builder --win
