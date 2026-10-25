@@ -1,0 +1,106 @@
+{
+  "name": "penmods-installer-desktop",
+  "productName": "PenMods Installer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PenMods 桌面安装器 — 有道词典笔 Mod 一键安装 / 插件市场 / 安装包市场 / OTA 更新",
+  "author": "Zikuishanlu",
+  "license": "GPL-3.0",
+  "homepage": "https://github.com/Zikuishanlu/PenModsInstaller-Desktop",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zikuishanlu/PenModsInstaller-Desktop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Zikuishanlu/PenModsInstaller-Desktop/issues"
+  },
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "electron .",
+    "typecheck": "tsc -b",
+    "dist": "vite build && electron-builder --win",
+    "dist:portable": "vite build && electron-builder --win portable",
+    "dist:dir": "vite build && electron-builder --win --dir"
+  },
+  "dependencies": {
+    "@xterm/xterm": "^6.0.0",
+    "@yume-chan/adb": "^2.6.0",
+    "@yume-chan/adb-daemon-webusb": "^2.3.2",
+    "jszip": "^3.10.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "ssh2": "^1.17.0",
+    "ws": "^8.21.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.1",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@types/ssh2": "^1.15.5",
+    "@types/w3c-web-usb": "^1.0.14",
+    "@vitejs/plugin-react": "^6.0.2",
+    "electron": "39.8.10",
+    "electron-builder": "^26.0.12",
+    "tailwindcss": "^4.3.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.0"
+  },
+  "build": {
+    "appId": "org.zikuishanlu.penmods.installer",
+    "productName": "PenMods Installer",
+    "electronVersion": "39.8.10",
+    "disableAsarIntegrity": true,
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/ssh2/**",
+      "node_modules/cpu-features/**",
+      "node_modules/sshcrypto/**"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "PenMods-Installer-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PenMods 安装器"
+    },
+    "portable": {
+      "artifactName": "PenMods-Installer-Portable-${version}.${ext}"
+    },
+    "npmRebuild": false
+  }
+}

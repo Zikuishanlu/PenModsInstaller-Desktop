@@ -1,0 +1,22 @@
+# 依赖与构建产物
+node_modules/
+dist/
+release/
+*.local
+*.tsbuildinfo
+
+# 打包/调试中间产物
+_electron/
+_ref/
+*.log
+npm-debug.log*
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 上游源码镜像（仅本地参考，不是本项目代码）
+src-upstream/
