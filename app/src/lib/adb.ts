@@ -140,16 +140,8 @@ export class AdbManager implements DeviceConnection {
         }
       }
     }
-    // 兜底：使用第一个 0xFF 接口
-    for (const config of device.configurations) {
-      for (const iface of config.interfaces) {
-        for (const alt of iface.alternates) {
-          if (alt.interfaceClass === 0xff) {
-            return { configuration: config, interface_: iface, alternate: alt };
-          }
-        }
-      }
-    }
+    // 注意：这里不能用「第一个 0xFF 接口」兜底。无线网卡等设备也是 0xFF/0xFF，
+    // 一旦兜底选中它们，open() 会直接抛 Access denied（系统设备不允许被 WebUSB 打开）。
     return undefined;
   }
 
@@ -174,11 +166,18 @@ export class AdbManager implements DeviceConnection {
     if (!rawDevice) {
       this.emit({ type: 'status', message: '请在弹出窗口中选择您的词典笔…' });
       try {
-        rawDevice = await usb.requestDevice({ filters: [{ classCode: 0xff }] });
+        // 只放行 ADB 接口（class 0xff / subclass 0x42 是 ADB，subclass 0x00 兼容部分厂商），
+        // 否则会把无线网卡等 0xff/0xff 设备一起列出来，选中后 open() 会 Access denied。
+        rawDevice = await usb.requestDevice({
+          filters: [
+            { classCode: 0xff, subclassCode: 0x42 },
+            { classCode: 0xff, subclassCode: 0x00 },
+          ],
+        });
         this.emit({ type: 'log', message: `已选择设备: ${rawDevice.productName || 'dictpen'}` });
       } catch (e: unknown) {
         if (e instanceof DOMException && e.name === 'NotFoundError') {
-          throw new Error('未选择设备');
+          throw new Error('没有选中词典笔。请确认数据线插好、设备已开启 ADB 调试后重试');
         }
         throw e;
       }

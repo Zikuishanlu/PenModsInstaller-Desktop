@@ -40,17 +40,6 @@ if (!gotLock) {
   });
 }
 
-/** 是否看起来像 Android/ADB 设备（USB 接口类 0xff 厂商自定义，或 0x0a CDC） */
-function looksLikeAdb(device) {
-  try {
-    const interfaces = device.interfaces || device.configurations || [];
-    const list = Array.isArray(interfaces) ? interfaces : Object.values(interfaces);
-    return list.some((i) => i && (i.interfaceClass === 0xff || i.interfaceClass === 10 || i.class === 0xff));
-  } catch {
-    return false;
-  }
-}
-
 function setupUsb() {
   const ses = session.defaultSession;
 
@@ -66,14 +55,8 @@ function setupUsb() {
     return false;
   });
 
-  // 不弹 Chromium 原生选择框，自动挑第一个像 ADB 的设备
-  ses.on('select-usb-device', (event, details, callback) => {
-    event.preventDefault();
-    const list = details.deviceList || [];
-    if (list.length === 0) return callback('');
-    const preferred = list.find((d) => looksLikeAdb(d.device) || looksLikeAdb(d)) || list[0];
-    callback(preferred.deviceId);
-  });
+  // 这里不再自动挑设备：由页面按 ADB 接口过滤后弹系统选择框，
+  // 否则容易把无线网卡之类 0xFF 设备当词典笔，open() 会 Access denied。
 
   // 个别 Chromium 版本对已知设备做拦截，这里全部放行
   ses.setPermissionCheckHandler((_wc, permission) => permission === 'usb' || permission === 'clipboard-sanitized-write');
