@@ -22,6 +22,7 @@
     "preview": "vite preview",
     "start": "electron .",
     "typecheck": "tsc -b",
+    "smoke": "node --experimental-transform-types tests/smoke.mjs",
     "dist": "vite build && electron-builder --win",
     "dist:portable": "vite build && electron-builder --win portable",
     "dist:dir": "vite build && electron-builder --win --dir"

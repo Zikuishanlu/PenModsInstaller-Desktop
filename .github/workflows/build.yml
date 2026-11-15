@@ -32,6 +32,10 @@ jobs:
         working-directory: app
         run: npm run build
 
+      - name: Smoke test
+        working-directory: app
+        run: npm run smoke
+
       - name: Build exe
         working-directory: app
         run: npx electron-builder --win

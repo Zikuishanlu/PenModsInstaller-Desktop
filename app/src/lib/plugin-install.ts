@@ -190,8 +190,10 @@ export async function parsePluginFromFiles(fileList: File[]): Promise<PluginPack
 export async function getInstalledPlugin(conn: DeviceConnection, name: string): Promise<PluginMeta | null> {
   // name 来自设备目录列表，但仍要挡掉 `..`/绝对路径；拼 shell 命令时再单引号转义，
   // 这样目录名里带引号或 `$(...)` 也不会变成命令注入。
-  const metaPath = safeJoin(PLUGINS_DIR, name) + '/metadata.json';
   try {
+    // safeJoin 也在 try 里：设备上出现 `..` / 绝对路径这种怪目录名时，
+    // 只当「这个插件读不到」，不能让整个已装列表刷不出来。
+    const metaPath = safeJoin(PLUGINS_DIR, name) + '/metadata.json';
     let text: string;
     // noShell 连接（SSH）的 exec 通道不可靠，cat 读不到内容 —— 改走 SFTP readFile
     if (conn.noShell && conn.readFile) {
