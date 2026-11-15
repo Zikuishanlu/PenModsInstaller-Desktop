@@ -297,6 +297,10 @@ function attachSshProxy(server) {
       let sshClient = null;
       let sftpSession = null;
       let shellStream = null;
+      // 分块上传的句柄：uploadId -> ssh2 SFTP handle。
+      // 大文件不能靠一条 base64 消息传完（渲染进程拼字符串会卡死、30s 必超时），
+      // 所以拆成 begin/chunk/end 三步，句柄在这中间存着。
+      const writeHandles = new Map();
 
       const send = (data) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(data)); };
       const sendData = (type, payload) => send({ type, ...payload });
@@ -324,7 +328,12 @@ function attachSshProxy(server) {
         sendData('connect_result', { ok: false, msg: err.message });
         sendData('shell_close', {});
       });
-      sshClient.on('close', () => { sftpSession = null; shellStream = null; });
+      sshClient.on('close', () => {
+        sftpSession = null;
+        shellStream = null;
+        // 连接断了，句柄随之失效；清掉避免下次连接复用脏状态
+        writeHandles.clear();
+      });
       sshClient.connect({ host: targetHost, port: targetPort, username: sshUser, password: sshPass, readyTimeout: 15000 });
 
       const sftpOpMap = {
@@ -347,6 +356,32 @@ function attachSshProxy(server) {
         },
         sftp_write(sftp, msg, cb) {
           sftp.writeFile(msg.path, Buffer.from(msg.data, 'base64'), (err) => cb(err, { ok: !err }));
+        },
+        // ── 分块上传：begin → write_chunk × N → end ──
+        sftp_write_begin(sftp, msg, cb) {
+          sftp.open(msg.path, 'w', (err, handle) => {
+            if (err) return cb(err);
+            writeHandles.set(msg.uploadId, handle);
+            cb(null, { ok: true });
+          });
+        },
+        sftp_write_chunk(sftp, msg, cb) {
+          const handle = writeHandles.get(msg.uploadId);
+          if (!handle) return cb(new Error('上传会话不存在（可能已断开或超时）'));
+          const buf = Buffer.from(msg.data, 'base64');
+          sftp.write(handle, buf, 0, buf.length, msg.position, (err) => cb(err, { ok: !err }));
+        },
+        sftp_write_end(sftp, msg, cb) {
+          const handle = writeHandles.get(msg.uploadId);
+          if (!handle) return cb(new Error('上传会话不存在（可能已断开或超时）'));
+          writeHandles.delete(msg.uploadId);
+          sftp.close(handle, (err) => cb(err, { ok: !err }));
+        },
+        sftp_write_abort(sftp, msg, cb) {
+          const handle = writeHandles.get(msg.uploadId);
+          writeHandles.delete(msg.uploadId);
+          if (!handle) return cb(null, { ok: true });
+          sftp.close(handle, () => cb(null, { ok: true }));
         },
         sftp_delete(sftp, msg, cb) {
           sftp.unlink(msg.path, (err) => cb(err, { ok: !err }));
@@ -433,6 +468,10 @@ function attachSshProxy(server) {
           case 'sftp_readdir':
           case 'sftp_read':
           case 'sftp_write':
+          case 'sftp_write_begin':
+          case 'sftp_write_chunk':
+          case 'sftp_write_end':
+          case 'sftp_write_abort':
           case 'sftp_delete':
           case 'sftp_rename':
           case 'sftp_mkdir':

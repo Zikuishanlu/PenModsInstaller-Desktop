@@ -14,7 +14,8 @@ export function useUploadSFTP(
 
   const pushFile = useCallback(async (file: File, remotePath: string) => {
     const data = new Uint8Array(await file.arrayBuffer());
-    await sftpWriteFile(remotePath, data);
+    setUploadProgress(0);
+    await sftpWriteFile(remotePath, data, (pct) => setUploadProgress(pct));
     setUploadProgress(100);
   }, []);
 

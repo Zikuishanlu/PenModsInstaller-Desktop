@@ -170,15 +170,67 @@ export async function sftpReadFile(path: string): Promise<Uint8Array> {
   return bytes;
 }
 
-export async function sftpWriteFile(path: string, data: Uint8Array): Promise<void> {
-  // 分块 base64 编码，避免大文件 ...data 展开爆栈
-  const chunkSize = 8192;
-  let b64 = '';
-  for (let i = 0; i < data.length; i += chunkSize) {
-    const chunk = data.subarray(i, i + chunkSize);
-    b64 += btoa(String.fromCharCode(...chunk));
+/** 分块上传的块大小：128KB 原始数据 ≈ 171KB base64，单帧不会触发 WS 帧上限 */
+const SFTP_CHUNK_BYTES = 128 * 1024;
+
+/** Uint8Array → base64。按 32KB 分段调用 fromCharCode，避免参数过多爆栈。 */
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = '';
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + step) as unknown as number[]);
   }
-  const r = await sendMsg('sftp_write', { path, data: b64 });
+  return btoa(bin);
+}
+
+/**
+ * 写文件到设备。
+ *
+ * 之前是把整个文件拼成一份 base64 塞进一条 WS 消息：几十 MB 的文件在渲染进程里
+ * 要额外扛 2~3 倍内存，而且 sendMsg 30s 必超时。现在改成分块上传
+ * （begin → chunk × N → end），单块 128KB，进度可选。
+ */
+export async function sftpWriteFile(
+  path: string,
+  data: Uint8Array,
+  onProgress?: (pct: number) => void,
+): Promise<void> {
+  const uploadId = 'u' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+
+  // 老版本主进程（打包在 exe 里的 server.cjs）没有分块接口：超时/报错就退回单帧写入。
+  try {
+    const begun = await sendMsg('sftp_write_begin', { uploadId, path }, { timeout: 10000 });
+    if (!begun || !begun.ok) throw new Error('分块上传不可用');
+  } catch {
+    await sftpWriteFileLegacy(path, data);
+    return;
+  }
+
+  try {
+    if (data.length === 0) {
+      await sendMsg('sftp_write_chunk', { uploadId, position: 0, data: '' }, { timeout: 30000 });
+    }
+    for (let offset = 0; offset < data.length; offset += SFTP_CHUNK_BYTES) {
+      const chunk = data.subarray(offset, Math.min(offset + SFTP_CHUNK_BYTES, data.length));
+      const r = await sendMsg(
+        'sftp_write_chunk',
+        { uploadId, position: offset, data: bytesToBase64(chunk) },
+        { timeout: 60000 },
+      );
+      if (!r.ok) throw new Error('写入失败');
+      onProgress?.(Math.round(((offset + chunk.length) / data.length) * 100));
+    }
+    const ended = await sendMsg('sftp_write_end', { uploadId }, { timeout: 60000 });
+    if (!ended.ok) throw new Error('写入失败');
+  } catch (e) {
+    await sendMsg('sftp_write_abort', { uploadId }, { timeout: 5000 }).catch(() => {});
+    throw e;
+  }
+}
+
+/** 单帧写入（仅用于回退到老版本主进程） */
+async function sftpWriteFileLegacy(path: string, data: Uint8Array): Promise<void> {
+  const r = await sendMsg('sftp_write', { path, data: bytesToBase64(data) }, { timeout: 120000 });
   if (!r.ok) throw new Error('写入失败');
 }
 
