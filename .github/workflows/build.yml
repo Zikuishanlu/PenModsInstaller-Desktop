@@ -54,4 +54,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/release/*.exe
+          name: PenMods 安装器 ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            app/release/*.exe
+            app/release/*.yml
+            app/release/*.blockmap

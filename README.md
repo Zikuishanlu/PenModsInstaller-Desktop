@@ -1,7 +1,7 @@
 # PenMods 安装器（桌面版）
 
 把 [pen.skdkzzx.dpdns.org](https://pen.skdkzzx.dpdns.org/) 的网页版安装器做成 Windows 桌面程序，
-并在原版基础上加了三个市场/更新功能。
+并在原版基础上加了侧边栏布局、插件/安装包/OTA 三个市场、设置页与音乐模块。
 
 - 本项目源码：<https://github.com/Zikuishanlu/PenModsInstaller-Desktop>
 - 在线版：<https://pen.skdkzzx.dpdns.org/>
@@ -21,8 +21,9 @@
 | OTA 更新包 | [Lyrecoul/penmods-ota](https://github.com/Lyrecoul/penmods-ota) |
 | 桌面封装 + 三个市场/更新页面 + 品牌与文案调整 | Zikuishanlu（本仓库） |
 
-本仓库做的事只有三件：① 把网页版封装成 Windows 桌面程序（Electron 外壳 + 本地 HTTP/WS 服务，见 [实现原理](docs/IMPLEMENTATION.md)）；
-② 新增「插件市场 / 安装包市场 / OTA 更新」三个页面；③ 品牌与文案调整。
+本仓库做的事：① 把网页版封装成 Windows 桌面程序（Electron 外壳 + 本地 HTTP/WS 服务，见 [实现原理](docs/IMPLEMENTATION.md)）；
+② 新增「插件市场 / 安装包市场 / OTA 更新」三个页面；③ 顶部标签导航改成侧边栏，新增「设置」页与「音乐」模块；
+④ 安装链路与本地服务的安全加固（明细见 [CHANGELOG.md](CHANGELOG.md)）；⑤ 品牌与文案调整。
 
 依 GPL-3.0 分发，原始版权声明完整保留（见 [LICENSE](LICENSE)、[docs/NOTICE.md](docs/NOTICE.md)）。
 若要基于本项目继续修改，同样需要开源，并保留上述所有归属声明。
@@ -34,16 +35,22 @@
 | --- | --- | --- |
 | 插件市场（在线浏览 + 一键安装插件） | 插件安装 → **插件市场** | 你的 GitHub 仓库（默认 `skdkzzx`，可改） |
 | 安装包市场（在线浏览 + 一键安装应用包） | 安装包 → **安装包市场** | 同上：仓库的 Release 附件或 `app.json` |
-| PenMods 运行时 OTA 更新 | 更多 ⋯ → **OTA 更新** | `Lyrecoul/penmods-ota` 的 `update_*.zip` |
+| PenMods 运行时 OTA 更新 | 侧边栏 → **OTA 更新** | `Lyrecoul/penmods-ota` 的 `update_*.zip` |
+| 音乐：本地选歌 / 在线搜歌 / 歌单，推到笔上 | 侧边栏 → **音乐** | 你自己填的音源（见「音乐模块」一节） |
+| 设置：GitHub Token、连接方式、音源、清缓存、检查更新 | 侧边栏 → **设置** | 本机 localStorage + GitHub Release |
 
 
 原来网页版的所有能力都保留：PenMods 安装/卸载、插件本地安装、终端（shell）、文件管理、开启 SSH。
 
-![主界面](docs/screenshots/main-window.png)
+![主界面](docs/screenshots/sidebar.png)
 
 | 插件市场 | 安装包市场 | OTA 更新 |
 | --- | --- | --- |
 | ![插件市场](docs/screenshots/plugin-market.png) | ![安装包市场](docs/screenshots/app-market.png) | ![OTA](docs/screenshots/ota.png) |
+
+| 设置（含检查更新） | 音乐 · 本地推送 | 音乐 · 在线搜歌 |
+| --- | --- | --- |
+| ![设置](docs/screenshots/settings.png) | ![音乐](docs/screenshots/music-local.png) | ![在线搜歌](docs/screenshots/music-online.png) |
 
 
 ## 下载
@@ -52,8 +59,8 @@
 
 | 文件 | 说明 |
 | --- | --- |
-| [PenMods-Installer-Portable-1.0.0.exe](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases/download/v1.0.0/PenMods-Installer-Portable-1.0.0.exe) | 免安装单文件，双击即用 |
-| [PenMods-Installer-1.0.0-x64.exe](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases/download/v1.0.0/PenMods-Installer-1.0.0-x64.exe) | 安装版，可选目录 + 桌面快捷方式 |
+| [PenMods-Installer-Portable-1.1.0.exe](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases/download/v1.1.0/PenMods-Installer-Portable-1.1.0.exe) | 免安装单文件，双击即用 |
+| [PenMods-Installer-1.1.0-x64.exe](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases/download/v1.1.0/PenMods-Installer-1.1.0-x64.exe) | 安装版，可选目录 + 桌面快捷方式 |
 
 全部版本在 [Releases](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases) 页面。
 程序未做代码签名，Windows 可能提示「未知发布者」，选「仍要运行」即可。
@@ -119,8 +126,8 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `app/release/PenMods-Installer-Portable-1.0.0.exe` | ~109 MB | 免安装单文件，双击即用（解压到临时目录运行） |
-| `app/release/PenMods-Installer-1.0.0-x64.exe` | ~118 MB | NSIS 安装版，可选安装目录，建桌面/开始菜单快捷方式 |
+| `app/release/PenMods-Installer-Portable-1.1.0.exe` | ~110 MB | 免安装单文件，双击即用（解压到临时目录运行） |
+| `app/release/PenMods-Installer-1.1.0-x64.exe` | ~120 MB | NSIS 安装版，可选安装目录，建桌面/开始菜单快捷方式 |
 
 > 打包时 electron-builder 需要下载 Electron 二进制与 NSIS 工具链；`.npmrc` 已把
 > `electron_mirror` / `electron_builder_binaries_mirror` 指向 npmmirror 镜像。
@@ -135,7 +142,7 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 
 1. **别把 exe 放在项目目录里**。本机实测：放在工作区目录（`...\dsh\penmods\...`）下的 exe
    双击后进程秒退、窗口不出现；同样的文件复制到桌面就能正常跑。
-   把 `PenMods-Installer-Portable-1.0.0.exe` 放到桌面或 `D:\` 这类普通目录再双击。
+   把 `PenMods-Installer-Portable-1.1.0.exe` 放到桌面或 `D:\` 这类普通目录再双击。
 2. 看启动日志：`%TEMP%\penmods-installer-boot.log`。
    - 文件不存在 → 主进程还没跑到 JS 就退出了（基本就是路径/杀软拦截，换目录重试）。
    - 有 `app ready` 但没 `window created` → 本地服务或窗口创建失败，日志里会写原因。
@@ -211,10 +218,35 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 
 OTA 源仓库可以在页面里改，也支持贴任意 zip 直链。
 
+## 音乐模块
+
+侧边栏「音乐」有三个页签，全部围绕「把歌放到笔上」：
+
+- **本地音乐**：选文件夹或选文件，勾选后推送（默认目录 `/userdisk/Music`，可在设置里改）
+- **在线搜歌**：关键词搜索 → 试听 / 下载到笔
+- **歌单**：一行一首粘贴（`歌名 - 歌手`，只写歌名也行），按顺序搜第一条并推送，一次最多 30 首
+
+播放来源**不内置任何第三方接口**（那属于灰色地带），需要你在 **设置 → 音乐** 里填一个音源根地址，
+自己搭或找现成的都行。接口只有两个 GET：
+
+```text
+GET {base}/search?keyword=晴天&limit=20
+→ { "songs": [{ "id": "1", "name": "晴天", "singer": "周杰伦", "album": "叶惠美", "duration": 269 }] }
+
+GET {base}/url?id=1
+→ { "url": "https://example.com/x.mp3" }
+```
+
+搜索结果里直接带 `url` 的可以省掉第二次请求。字段名兼容 `songs / data / list / items`、
+`name|songname|title`、`singer|artist|author`、`duration|interval` 这几种常见写法。
+
+渲染层不能直连外站（CORS），所以音频由本地服务 `/api/proxy` 代取：允许 http/https 任意主机（音源可能在内网），
+但会逐跳校验重定向、拦 `169.254.169.254` 这类云元数据地址、单文件上限 120MB，并透传 `Range`。
+
 ## GitHub Token（可选但推荐）
 
-匿名调用 GitHub API 每小时 60 次，扫市场很快就用完。在「插件市场 / 安装包市场 → 设置」
-里填入 Personal Access Token（只需 public_repo 读权限）即可提到 5000 次/小时。
+匿名调用 GitHub API 每小时 60 次，扫市场很快就用完。在**设置 → GitHub 访问**里填入
+Personal Access Token（只需 public_repo 读权限）即可提到 5000 次/小时。
 Token 只存在本机 localStorage，由主进程转发时加在请求头里。
 
 ## 目录结构
@@ -232,7 +264,12 @@ app/
     pages/PluginMarket/   插件市场
     pages/AppsMarket/     安装包市场
     pages/OtaPage/        OTA 更新
+    pages/Settings/       设置（Token / 连接方式 / 音源 / 检查更新）
+    pages/Music/          音乐（本地推送 / 在线搜歌 / 歌单）
+    lib/music.ts          音源接口、歌单解析、设备推送
+    lib/updates.ts        桌面端本体版本检查
     pages/hubs.tsx        本地安装 / 市场 的分段切换
+  tests/smoke.mjs        零依赖冒烟测试（CI 里跑）
   public/files/           PenMods 安装文件（79 个，随程序打包）
   build/icon.ico          应用图标
   src/lib/branding.ts     品牌/链接集中配置（换成自己的信息只改这里）
@@ -263,7 +300,8 @@ git push -u origin main
 仓库带了一个 GitHub Actions 工作流 `.github/workflows/build.yml`：
 
 - 手动触发（Actions → build → Run workflow）会跑一遍类型检查 + 打包，产物在 Artifacts 里；
-- 打 tag（`git tag v1.0.0 && git push origin v1.0.0`）会自动把两个 exe 传到 Release。
+- 打 tag（`git tag v1.1.0 && git push origin v1.1.0`）会自动把两个 exe 传到 Release。
+- 普通 push / PR 也会跑类型检查、冒烟测试和打包，但只有打 tag 才会发 Release。
 
 这样换台机器、或者本机网络抽风时，也能拿到可用的 exe。
 
@@ -284,6 +322,10 @@ git push -u origin main
 
 第三方组件（React、@yume-chan/adb、jszip、ssh2、xterm 等）均为 MIT 许可，清单与版本见
 [docs/NOTICE.md](docs/NOTICE.md) 第 4 节。
+
+## 更新日志
+
+版本变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 免责声明
 
