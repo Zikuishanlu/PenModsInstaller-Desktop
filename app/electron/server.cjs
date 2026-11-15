@@ -208,6 +208,102 @@ async function handleDownload(req, res, url) {
   }
 }
 
+/**
+ * 音乐模块用：代取用户配置的「音源」接口与音频文件。
+ *
+ * 和 /api/dl 的区别：那个只允许 GitHub 白名单域名（防止被随便拿去当开放代理）；
+ * 这里的地址是用户自己在设置里填的音源，必须支持任意主机（含自建局域网服务）。
+ * 仍然拦掉云元数据地址，并逐跳校验重定向，避免音源返回的重定向把人带到
+ * 169.254.169.254 这类地方。
+ */
+const PROXY_MAX_BYTES = 120 * 1024 * 1024;
+const PROXY_BLOCKED_HOSTS = new Set(['169.254.169.254', 'metadata.google.internal']);
+
+function proxyHostAllowed(u) {
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  return !PROXY_BLOCKED_HOSTS.has(u.hostname);
+}
+
+async function handleProxy(req, res, url) {
+  const target = url.searchParams.get('url') || '';
+  let u;
+  try {
+    u = new URL(target);
+  } catch {
+    return sendJson(res, 400, { error: 'bad url' });
+  }
+  if (!proxyHostAllowed(u)) {
+    return sendJson(res, 403, { error: 'host not allowed: ' + u.hostname });
+  }
+  const headers = {
+    'user-agent': 'PenMods-Installer-Desktop',
+    'accept-encoding': 'identity',
+  };
+  if (req.headers.accept) headers.accept = String(req.headers.accept);
+  if (req.headers.range) headers.range = String(req.headers.range);
+
+  try {
+    let current = u;
+    let r = null;
+    for (let hop = 0; hop <= 5; hop++) {
+      r = await fetch(current, { headers, redirect: 'manual', signal: AbortSignal.timeout(120000) });
+      if (r.status < 300 || r.status >= 400) break;
+      const loc = r.headers.get('location');
+      if (!loc) break;
+      let next;
+      try {
+        next = new URL(loc, current);
+      } catch {
+        break;
+      }
+      if (r.body) await r.body.cancel().catch(() => {});
+      if (!proxyHostAllowed(next)) {
+        return sendJson(res, 403, { error: 'redirect to disallowed host: ' + next.hostname });
+      }
+      current = next;
+      r = null;
+    }
+    if (!r) return sendJson(res, 502, { error: 'too many redirects' });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      return sendJson(res, r.status, { error: `HTTP ${r.status}`, detail: t.slice(0, 300) });
+    }
+    const len = Number(r.headers.get('content-length') || 0);
+    if (len > PROXY_MAX_BYTES) {
+      if (r.body) await r.body.cancel().catch(() => {});
+      return sendJson(res, 413, { error: 'file too large', size: len });
+    }
+    const out = {
+      'Content-Type': r.headers.get('content-type') || 'application/octet-stream',
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+    };
+    if (len) out['Content-Length'] = String(len);
+    const cr = r.headers.get('content-range');
+    if (cr) {
+      out['Content-Range'] = cr;
+      out['Accept-Ranges'] = 'bytes';
+    }
+    res.writeHead(r.status === 206 ? 206 : 200, out);
+    if (!r.body) return res.end();
+    let sent = 0;
+    const stream = Readable.fromWeb(r.body);
+    stream.on('data', (chunk) => {
+      sent += chunk.length;
+      // 上游没给 content-length 时靠计数兜底，别把内存/磁盘塞满
+      if (sent > PROXY_MAX_BYTES) {
+        try { stream.destroy(); } catch { /* noop */ }
+        try { res.destroy(); } catch { /* noop */ }
+      }
+    });
+    stream.pipe(res);
+    req.on('close', () => { try { stream.destroy(); } catch { /* noop */ } });
+  } catch (e) {
+    if (!res.headersSent) sendJson(res, 502, { error: 'proxy failed: ' + (e && e.message) });
+    else res.end();
+  }
+}
+
 function serveStatic(req, res, root, url) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405);
@@ -534,6 +630,7 @@ async function startServer({ root, appVersion }) {
     }
     if (url.pathname === '/api/gh') return handleGh(req, res, url);
     if (url.pathname === '/api/dl') return handleDownload(req, res, url);
+    if (url.pathname === '/api/proxy') return handleProxy(req, res, url);
     if (url.pathname === '/api/info') {
       return sendJson(res, 200, {
         app: 'penmods-installer-desktop',

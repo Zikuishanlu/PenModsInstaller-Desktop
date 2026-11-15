@@ -3,7 +3,10 @@ import { ghGet, getOwner, getToken, setOwner, setToken } from '../../lib/github'
 import { BRAND } from '../../lib/branding';
 import { checkInstallerUpdate, type UpdateCheck } from '../../lib/updates';
 import {
-  IconCheck, IconEye, IconEyeOff, IconRefresh, IconSettings, IconShield, IconTrash,
+  DEFAULT_DEVICE_MUSIC_DIR, loadMusicSource, saveMusicSource,
+} from '../../lib/music';
+import {
+  IconCheck, IconEye, IconEyeOff, IconMusic, IconRefresh, IconSettings, IconShield, IconTrash,
 } from '../../components/icons';
 
 /**
@@ -23,6 +26,8 @@ const LOCAL_KEYS = [
   'sshPort',
   'pluginsHubTab',
   'appsHubTab',
+  'music_source',
+  'music_device_dir',
 ];
 
 function Card({
@@ -84,6 +89,9 @@ export function Settings(props: SettingsProps) {
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'done' | 'error'>('idle');
   const [updateErr, setUpdateErr] = useState('');
   const [checkedAt, setCheckedAt] = useState('');
+  // 音乐
+  const [music, setMusic] = useState(() => loadMusicSource());
+  const [musicMsg, setMusicMsg] = useState('');
   // 本地数据
   const [cleared, setCleared] = useState(false);
 
@@ -333,6 +341,67 @@ export function Settings(props: SettingsProps) {
             </p>
           </div>
         )}
+      </Card>
+
+      {/* ── 音乐 ── */}
+      <Card
+        title="音乐"
+        desc="「音乐」模块用的音源与推送目录。音源由你自己提供，安装器只负责请求、下载和推送。"
+        icon={<IconMusic className="w-4 h-4" />}
+      >
+        <div className="space-y-2">
+          <label className="block text-[11px] text-[#64748b]">音源根地址</label>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={music.base}
+              onChange={(e) => setMusic({ ...music, base: e.target.value })}
+              placeholder="https://music.example.com 或 http://192.168.1.10:3000"
+              className="flex-1 min-w-[240px] text-[12px] px-3 py-1.5 border border-[#e2e8f0] rounded-lg focus:outline-none focus:border-[#2563eb]"
+            />
+          </div>
+          <p className="text-[10px] text-[#94a3b8] leading-relaxed">
+            约定两个接口：<code className="bg-[#f1f5f9] px-1 rounded">GET /search?keyword=&amp;limit=</code> 返回
+            {' '}<code className="bg-[#f1f5f9] px-1 rounded">{'{ songs: [{ id, name, singer, album, duration }] }'}</code>；
+            {' '}<code className="bg-[#f1f5f9] px-1 rounded">GET /url?id=</code> 返回
+            {' '}<code className="bg-[#f1f5f9] px-1 rounded">{'{ url }'}</code>。
+            返回里自带 <code className="bg-[#f1f5f9] px-1 rounded">url</code> 的可以直接给。
+          </p>
+
+          <label className="block text-[11px] text-[#64748b] pt-1">推送到设备上的目录</label>
+          <input
+            value={music.deviceDir}
+            onChange={(e) => setMusic({ ...music, deviceDir: e.target.value })}
+            placeholder={DEFAULT_DEVICE_MUSIC_DIR}
+            className="w-full text-[12px] px-3 py-1.5 border border-[#e2e8f0] rounded-lg focus:outline-none focus:border-[#2563eb]"
+          />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                saveMusicSource(music);
+                setMusic(loadMusicSource());
+                setMusicMsg('已保存');
+                setTimeout(() => setMusicMsg(''), 2000);
+              }}
+              className="text-[11px] px-3 py-1.5 bg-[#0f172a] text-white rounded-lg hover:bg-[#1e293b]"
+            >
+              保存
+            </button>
+            <button
+              onClick={() => {
+                const def = { base: '', deviceDir: DEFAULT_DEVICE_MUSIC_DIR };
+                saveMusicSource(def);
+                setMusic(loadMusicSource());
+                setMusicMsg('已恢复默认');
+                setTimeout(() => setMusicMsg(''), 2000);
+              }}
+              className="text-[11px] px-3 py-1.5 border border-[#e2e8f0] rounded-lg text-[#64748b] hover:bg-[#f8fafc]"
+            >
+              恢复默认
+            </button>
+            {musicMsg && <span className="text-[11px] text-[#15803d]">{musicMsg}</span>}
+          </div>
+        </div>
       </Card>
 
       {/* ── 本地数据 ── */}

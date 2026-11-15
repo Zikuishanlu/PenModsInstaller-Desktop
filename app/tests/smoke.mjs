@@ -59,6 +59,7 @@ const gh = await import(libPath('github'));
 const store = await import(libPath('app-store'));
 const stepsLib = await import(libPath('steps'));
 const updatesLib = await import(libPath('updates'));
+const musicLib = await import(libPath('music'));
 const installerLib = await import(libPath('installer'));
 
 // 渲染层用 localStorage 存 token/owner；Node 下给个替身
@@ -144,6 +145,61 @@ await attempt('自定义安装包脚本带 set -e 与完成标记', () => {
   if (!pkg.script.startsWith('set -e')) return '缺少 set -e';
   if (!/echo "安装完成"/.test(pkg.script)) return '缺少完成标记';
   return pkg.id === 'custom_MyApp-1.2.3' ? true : 'id=' + pkg.id;
+});
+
+await attempt('音乐：搜索响应兼容多种字段与包裹', () => {
+  const a = musicLib.parseSearchResponse({ songs: [{ id: 1, name: '晴天', singer: '周杰伦', interval: 269 }] });
+  const b = musicLib.parseSearchResponse({ data: { list: [{ songmid: 'x', songname: '海阔天空', artist: 'Beyond' }] } });
+  const c = musicLib.parseSearchResponse([{ title: '起风了' }]);
+  if (a.length !== 1 || a[0].name !== '晴天' || a[0].duration !== 269) return 'A=' + JSON.stringify(a);
+  if (b.length !== 1 || b[0].id !== 'x' || b[0].singer !== 'Beyond') return 'B=' + JSON.stringify(b);
+  if (c.length !== 1 || c[0].name !== '起风了') return 'C=' + JSON.stringify(c);
+  if (musicLib.parseSearchResponse({ nope: 1 }).length !== 0) return '空响应应为空数组';
+  return true;
+});
+
+await attempt('音乐：取播放地址兼容 {url}/data/纯字符串', () => {
+  if (musicLib.pickSongUrl({ url: 'https://a/b.mp3' }) !== 'https://a/b.mp3') return '直接 url 失败';
+  if (musicLib.pickSongUrl({ data: { url: 'https://a/c.flac' } }) !== 'https://a/c.flac') return '嵌套失败';
+  if (musicLib.pickSongUrl('https://a/d.m4a') !== 'https://a/d.m4a') return '字符串失败';
+  if (musicLib.pickSongUrl({ url: '/relative' }) !== '') return '相对地址应拒绝';
+  return true;
+});
+
+await attempt('音乐：文件名净化（路径符/保留字/超长）', () => {
+  const n = musicLib.audioFileName({ name: 'a/b:c*?"<>|d', singer: 'x' }, '.mp3');
+  if (/[\\/:*?"<>|]/.test(n)) return '仍有非法字符: ' + n;
+  if (!n.endsWith('.mp3')) return '扩展名丢失: ' + n;
+  const long = musicLib.audioFileName({ name: 'x'.repeat(300) }, '.flac');
+  if (long.length > 130) return '太长: ' + long.length;
+  if (!musicLib.audioFileName({ name: 'song', singer: '' }).endsWith('.mp3')) return '默认扩展名失败';
+  return true;
+});
+
+await attempt('音乐：扩展名只认音频后缀', () => {
+  if (musicLib.guessExt('https://x/a.flac?token=1') !== '.flac') return 'flac 未识别';
+  if (musicLib.guessExt('https://x/a.mp3#t') !== '.mp3') return 'mp3 未识别';
+  if (musicLib.guessExt('https://x/a.exe') !== '') return '非音频不应识别';
+  if (!musicLib.isAudioFile('A.MP3')) return '大写扩展名未识别';
+  return true;
+});
+
+await attempt('音乐：歌单文本解析', () => {
+  const list = musicLib.parsePlaylistText('1. 晴天 - 周杰伦\n\n海阔天空 – Beyond\n起风了\n  * 稻香 _ 周杰伦\n');
+  if (list.length !== 4) return '条数=' + list.length + ' ' + JSON.stringify(list);
+  if (list[0].name !== '晴天' || list[0].singer !== '周杰伦') return '首条=' + JSON.stringify(list[0]);
+  if (list[1].singer !== 'Beyond') return '破折号未识别';
+  if (list[2].name !== '起风了' || list[2].singer !== '') return '单曲名解析错';
+  if (list[3].name !== '稻香') return '下划线未识别: ' + list[3].name;
+  return true;
+});
+
+await attempt('音乐：设备路径与目录归一', () => {
+  if (musicLib.normalizeBase(' https://a.com/api/ ') !== 'https://a.com/api') return '归一失败';
+  if (musicLib.joinRemote('/userdisk/Music/', 'a.mp3') !== '/userdisk/Music/a.mp3') return 'joinRemote 失败';
+  if (!musicLib.buildSearchUrl('https://a', '周 杰伦').includes('keyword=%E5%91%A8%20%E6%9D%B0%E4%BC%A6')) return '关键词未编码';
+  if (!musicLib.buildSongUrl('https://a', 'id 1').includes('id=id%201')) return 'id 未编码';
+  return true;
 });
 
 await attempt('版本比较：新旧/相同/补零', () => {
