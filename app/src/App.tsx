@@ -1,4 +1,4 @@
-import { Component, useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { Component, useState, useCallback, useRef, useEffect, useMemo, type ComponentType } from 'react';
 import { AdbManager, type AdbProgressEvent, type DeviceStatus as DeviceStatusType } from './lib/adb';
 import { Installer } from './lib/installer';
 import { createSSHConnection } from './lib/device';
@@ -11,7 +11,7 @@ import { OtaPage } from './pages/OtaPage';
 import { connectSSHProxy, disconnectSSH, setOnDisconnect } from './lib/ssh';
 import { getInstallFiles, getInstallFilesFromZip, type InstallFile } from './lib/files';
 import { IconPackage, IconUsb, IconZap, IconCheck,
-  IconRefresh, IconUpload, IconTerminal, IconX
+  IconRefresh, IconUpload, IconTerminal, IconX, IconFolder, IconShield, type IconProps
 } from './components/icons';
 import { DisclaimerModal } from './components/DisclaimerModal';
 import { BRAND } from './lib/branding';
@@ -50,19 +50,28 @@ type Step = 'idle' | 'installing' | 'done' | 'error';
 /** 工具标签 */
 type ToolTab = 'penmods' | 'files' | 'plugins' | 'ssh' | 'enable-ssh' | 'apps' | 'ota';
 
-// 主导航（常用）
-const MAIN_TABS: { id: ToolTab; label: string }[] = [
-  { id: 'penmods', label: 'PenMods 安装' },
-  { id: 'plugins', label: '插件安装' },
-  { id: 'ssh', label: '终端' },
-  { id: 'files', label: '文件管理' },
+interface NavTab {
+  id: ToolTab;
+  label: string;
+  icon: ComponentType<IconProps>;
+}
+
+/** 侧边栏 · 常用功能 */
+const TABS_MAIN: NavTab[] = [
+  { id: 'penmods', label: 'PenMods 安装', icon: IconZap },
+  { id: 'plugins', label: '插件安装', icon: IconPackage },
+  { id: 'ssh', label: '终端', icon: IconTerminal },
+  { id: 'files', label: '文件管理', icon: IconFolder },
 ];
-// 「更多 ⋯」二级菜单（工具/设置类）
-const MORE_TABS: { id: ToolTab; label: string }[] = [
-  { id: 'enable-ssh', label: '开启 SSH' },
-  { id: 'apps', label: '安装包' },
-  { id: 'ota', label: 'OTA 更新' },
+
+/** 侧边栏 · 工具 */
+const TABS_TOOLS: NavTab[] = [
+  { id: 'enable-ssh', label: '开启 SSH', icon: IconShield },
+  { id: 'apps', label: '安装包', icon: IconUpload },
+  { id: 'ota', label: 'OTA 更新', icon: IconRefresh },
 ];
+
+const ALL_TABS: NavTab[] = [...TABS_MAIN, ...TABS_TOOLS];
 
 function App() {
   const [activeTab, setActiveTab] = useState<ToolTab>('penmods');
@@ -95,7 +104,6 @@ function App() {
   const [sshPassword, setSshPassword] = useState('');
   const [showSshPanel, setShowSshPanel] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showMore, setShowMore] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
   // 卸载/重置等一次性操作的提示（不进安装日志区，那块只在安装时渲染）
   const [notice, setNotice] = useState<{ kind: 'info' | 'error' | 'success'; text: string } | null>(null);
@@ -403,8 +411,6 @@ function App() {
     }
   };
 
-  const moreActive = MORE_TABS.some(t => t.id === activeTab);
-
   /** 重置 */
   const handleReset = () => {
     setStep('idle');
@@ -423,14 +429,31 @@ function App() {
   );
   const deviceConn: DeviceConnection | null = connMode === 'ssh' ? sshConn : adbRef.current;
 
+  /** 侧边栏导航按钮（窄窗口下只显示图标，靠 title 做悬浮提示） */
+  const renderNavTab = (tab: NavTab) => {
+    const TabIcon = tab.icon;
+    const active = activeTab === tab.id;
+    return (
+      <button key={tab.id} onClick={() => setActiveTab(tab.id)} title={tab.label}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+          active
+            ? 'bg-[#eff6ff] text-[#1d4ed8] font-medium'
+            : 'text-[#64748b] hover:bg-[#f8fafc] hover:text-[#0f172a]'
+        }`}
+      >
+        <TabIcon className="h-[18px] w-[18px] flex-shrink-0" />
+        <span className="hidden truncate md:block">{tab.label}</span>
+      </button>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
-      {/* 顶栏 */}
-      <header className="bg-white border-b border-[#e2e8f0] sticky top-0 z-20">
-        <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 48 48" className="w-8 h-8">
+    <div className="flex min-h-screen bg-[#f8fafc]">
+      {/* 左侧边栏：品牌 + 工具导航。窗口变窄时自动收成图标条 */}
+      <aside className="sticky top-0 z-20 flex h-screen w-16 flex-shrink-0 flex-col border-r border-[#e2e8f0] bg-white md:w-56">
+        <div className="flex h-14 items-center gap-3 border-b border-[#e2e8f0] px-3 md:px-4">
+          <div className="flex-shrink-0">
+            <svg viewBox="0 0 48 48" className="w-8 h-8">
                 <defs>
                   <linearGradient id="hdr" x1="0%" y1="0%" x2="100%" y2="100%">
                     <stop offset="0%" stop-color="#2563eb"/>
@@ -442,184 +465,155 @@ function App() {
                 <path d="M20.5 28.5c-.3 0-.5-.4-.3-.7l3.8-11c0-.1.2-.2.5-.2s.4.1.5.2l3.8 11c.2.3 0 .7-.3.7h-8Z" fill="#6366f1" opacity="0.8"/>
                 <line x1="24" y1="25" x2="24" y2="37" stroke="#fff" stroke-width="1.5" opacity="0.4"/>
               </svg>
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold text-[#0f172a]">{BRAND.appName}</h1>
-              <p className="text-[10px] text-[#94a3b8] -mt-0.5">{BRAND.tagline}</p>
-            </div>
           </div>
-          {step !== 'idle' && (
-            <button onClick={handleReset}
-              className="text-xs text-[#64748b] hover:text-[#0f172a] flex items-center gap-1">
-              <IconRefresh className="w-3.5 h-3.5" /> 重置
-            </button>
-          )}
+          <div className="hidden min-w-0 md:block">
+            <h1 className="truncate text-sm font-semibold text-[#0f172a]">{BRAND.appName}</h1>
+            <p className="truncate text-[10px] text-[#94a3b8]">{BRAND.tagline}</p>
+          </div>
         </div>
-      </header>
 
-      {/* 工具导航栏 + 全局连接状态 */}
-      <div className="border-b border-[#e2e8f0] bg-white">
-        <div className="max-w-3xl mx-auto px-6 flex items-center">
-          {/* 主标签：仅这里可横向滚动 */}
-          <div className="flex min-w-0 flex-1 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {MAIN_TABS.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'border-[#0f172a] text-[#0f172a]'
-                    : 'border-transparent text-[#94a3b8] hover:text-[#64748b]'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          {/* 更多 ⋯（放在滚动容器外，下拉不会被 overflow 裁剪，也不会被挤压） */}
-          <div className="relative flex-shrink-0">
-            <button onClick={() => setShowMore(p => !p)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1 ${
-                moreActive ? 'border-[#0f172a] text-[#0f172a]' : 'border-transparent text-[#94a3b8] hover:text-[#64748b]'
-              }`}>
-              {moreActive ? MORE_TABS.find(t => t.id === activeTab)?.label : '更多'}
-              <svg className={`w-3 h-3 transition-transform ${showMore ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            {showMore && <div className="fixed inset-0 z-10" onClick={() => setShowMore(false)} />}
-            {showMore && (
-              <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-[#e2e8f0] rounded-lg shadow-lg py-1 min-w-[140px]">
-                {MORE_TABS.map(tab => (
-                  <button key={tab.id} onClick={() => { setActiveTab(tab.id); setShowMore(false); }}
-                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                      activeTab === tab.id ? 'text-[#0f172a] bg-[#f8fafc] font-medium' : 'text-[#64748b] hover:bg-[#f8fafc]'
-                    }`}>
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        {/* 连接控件：独立一行，永不与标签互相挤压 */}
-        <div className="max-w-3xl mx-auto px-6 pb-2 flex justify-end">
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* 连接模式切换 — 始终显示 */}
-            <div className="flex bg-[#f1f5f9] rounded-lg p-0.5 mr-2">
-              <button onClick={() => {
-                if (connMode !== 'usb' && deviceStatus === 'connected') handleDisconnect();
-                setConnMode('usb');
-              }}
-                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${connMode === 'usb' ? 'bg-white shadow-sm text-[#0f172a]' : 'text-[#64748b]'}`}>
-                <svg className="w-3.5 h-3.5 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="7" y="2" width="10" height="6" rx="1"/><line x1="12" y1="8" x2="12" y2="14"/><path d="M16 14H8a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1z"/><circle cx="12" cy="20" r="1"/></svg>
-                USB
-              </button>
-              <button onClick={() => {
-                if (connMode !== 'ssh' && deviceStatus === 'connected') handleDisconnect();
-                setConnMode('ssh');
-              }}
-                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${connMode === 'ssh' ? 'bg-white shadow-sm text-[#0f172a]' : 'text-[#64748b]'}`}>
-                <svg className="w-3.5 h-3.5 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                SSH
-              </button>
-            </div>
+        <nav className="flex-1 overflow-y-auto px-2 py-3">
+          <div className="space-y-0.5">{TABS_MAIN.map(renderNavTab)}</div>
+          <div className="my-2 border-t border-[#e2e8f0] md:mx-1" />
+          <div className="space-y-0.5">{TABS_TOOLS.map(renderNavTab)}</div>
+        </nav>
 
-            {deviceStatus === 'connected' ? (
-              <>
-                <span className={`status-dot online`} />
-                <span className="text-xs text-[#64748b]">
-                  {connMode === 'ssh' ? `SSH ${sshHost}` : (deviceInfo?.serial || '已连接')}
-                </span>
-                <button onClick={handleDisconnect}
-                  className="text-xs px-2.5 py-1 border border-[#e2e8f0] rounded-md text-[#64748b] hover:bg-[#f8fafc]">断开</button>
-              </>
-            ) : connMode === 'ssh' ? (
-              <div className="relative">
-                <button onClick={() => setShowSshPanel(p => !p)}
-                  className="text-xs px-3 py-1.5 bg-[#0f172a] text-white rounded-md hover:bg-[#1e293b] flex items-center gap-1.5 whitespace-nowrap">
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  SSH 连接
-                  <svg className={`w-3 h-3 transition-transform ${showSshPanel ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-                {showSshPanel && (
-                  <div className="fixed inset-0 z-10" onClick={() => setShowSshPanel(false)} />
-                )}
-                {showSshPanel && (
-                  <div className="absolute right-0 top-full mt-2 z-20 bg-white border border-[#e2e8f0] rounded-xl shadow-lg p-4 w-72">
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-[10px] text-[#94a3b8] block mb-1">主机名 (IP)</label>
-                        <input value={sshHost} onChange={e => setSshHost(e.target.value)}
-                          placeholder="192.168.x.x" autoFocus
-                          className="w-full px-3 py-2 text-sm border border-[#e2e8f0] rounded-lg outline-none focus:border-[#2563eb] font-mono" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-[10px] text-[#94a3b8] block mb-1">端口</label>
-                          <input value={sshPort} onChange={e => setSshPort(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-[#e2e8f0] rounded-lg outline-none focus:border-[#2563eb] font-mono" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-[#94a3b8] block mb-1">密码</label>
-                          <div className="relative">
-                            <input value={sshPassword} onChange={e => setSshPassword(e.target.value)}
-                              type={showPassword ? 'text' : 'password'}
-                              placeholder="CherryYoudao"
-                              className="w-full px-3 py-2 text-sm border border-[#e2e8f0] rounded-lg outline-none focus:border-[#2563eb] font-mono pr-8" />
-                            <button type="button" onClick={() => setShowPassword(v => !v)}
-                              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-[#0f172a] p-0.5">
-                              {showPassword ? (
-                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                              ) : (
-                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-[#94a3b8]">
-                        默认用户名 <code className="bg-[#f1f5f9] px-1 rounded">root</code>
-                        <br />需先开启 SSH 运行 + 开机自启
-                      </p>
-                      {deviceStatus === 'error' && (
-                        <p className="text-[10px] text-[#dc2626] bg-[#fef2f2] px-2 py-1 rounded">{error}</p>
-                      )}
-                      {deviceStatus === 'connecting' ? (
-                        <div className="w-full py-2 text-xs bg-[#e2e8f0] text-[#64748b] rounded-lg text-center flex items-center justify-center gap-2">
-                          <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.3"/><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
-                          连接中…
-                        </div>
-                      ) : (
-                        <button onClick={() => handleSshConnect()} disabled={!sshHost}
-                          className="w-full py-2 text-xs bg-[#0f172a] text-white rounded-lg hover:bg-[#1e293b] disabled:opacity-40">
-                          连接 SSH
-                        </button>
-                      )}
-                      <p className="text-[10px] text-[#94a3b8] text-center">
-                        Vite 已内置 SSH 代理，无需额外启动
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <button onClick={handleConnect} disabled={deviceStatus === 'connecting'}
-                className="text-xs px-2.5 py-1 bg-[#2563eb] text-white rounded-md hover:bg-[#1d4ed8] disabled:opacity-50">
-                {deviceStatus === 'connecting' ? '连接中…' : 'USB 连接'}
-              </button>
-            )}
-          </div>
-        </div>
-        {/* 连接错误提示 — 独立一行，不挤压标签 */}
-        {error && deviceStatus === 'error' && (
-          <div className="max-w-3xl mx-auto px-6 pb-2">
-            <div className="flex items-center gap-2 text-[10px] text-[#dc2626] bg-[#fef2f2] border border-[#fecaca] rounded-lg px-3 py-1.5">
-              <span>⚠</span>
-              <span className="flex-1">{error}</span>
-              <button onClick={() => setError(null)} className="text-[#94a3b8] hover:text-[#64748b] flex-shrink-0">✕</button>
-            </div>
+        {step !== 'idle' && (
+          <div className="border-t border-[#e2e8f0] p-2">
+            <button onClick={handleReset} title="重置"
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs text-[#64748b] transition-colors hover:bg-[#f8fafc] hover:text-[#0f172a]">
+              <IconRefresh className="h-[18px] w-[18px] flex-shrink-0" />
+              <span className="hidden md:block">重置</span>
+            </button>
           </div>
         )}
-      </div>
+      </aside>
 
-      <main className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+      {/* 右侧：连接状态栏 + 页面内容 */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-10 border-b border-[#e2e8f0] bg-white/95 backdrop-blur">
+          <div className="flex min-h-12 flex-wrap items-center justify-end gap-2 px-4 py-2">
+            <div className="mr-auto hidden text-sm font-medium text-[#0f172a] md:block">
+              {ALL_TABS.find(t => t.id === activeTab)?.label}
+            </div>
+          {/* 连接模式切换 — 始终显示 */}
+          <div className="flex bg-[#f1f5f9] rounded-lg p-0.5 mr-2">
+            <button onClick={() => {
+              if (connMode !== 'usb' && deviceStatus === 'connected') handleDisconnect();
+              setConnMode('usb');
+            }}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${connMode === 'usb' ? 'bg-white shadow-sm text-[#0f172a]' : 'text-[#64748b]'}`}>
+              <svg className="w-3.5 h-3.5 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="7" y="2" width="10" height="6" rx="1"/><line x1="12" y1="8" x2="12" y2="14"/><path d="M16 14H8a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1z"/><circle cx="12" cy="20" r="1"/></svg>
+              USB
+            </button>
+            <button onClick={() => {
+              if (connMode !== 'ssh' && deviceStatus === 'connected') handleDisconnect();
+              setConnMode('ssh');
+            }}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${connMode === 'ssh' ? 'bg-white shadow-sm text-[#0f172a]' : 'text-[#64748b]'}`}>
+              <svg className="w-3.5 h-3.5 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              SSH
+            </button>
+          </div>
+
+          {deviceStatus === 'connected' ? (
+            <>
+              <span className={`status-dot online`} />
+              <span className="text-xs text-[#64748b]">
+                {connMode === 'ssh' ? `SSH ${sshHost}` : (deviceInfo?.serial || '已连接')}
+              </span>
+              <button onClick={handleDisconnect}
+                className="text-xs px-2.5 py-1 border border-[#e2e8f0] rounded-md text-[#64748b] hover:bg-[#f8fafc]">断开</button>
+            </>
+          ) : connMode === 'ssh' ? (
+            <div className="relative">
+              <button onClick={() => setShowSshPanel(p => !p)}
+                className="text-xs px-3 py-1.5 bg-[#0f172a] text-white rounded-md hover:bg-[#1e293b] flex items-center gap-1.5 whitespace-nowrap">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                SSH 连接
+                <svg className={`w-3 h-3 transition-transform ${showSshPanel ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {showSshPanel && (
+                <div className="fixed inset-0 z-10" onClick={() => setShowSshPanel(false)} />
+              )}
+              {showSshPanel && (
+                <div className="absolute right-0 top-full mt-2 z-20 bg-white border border-[#e2e8f0] rounded-xl shadow-lg p-4 w-72">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[10px] text-[#94a3b8] block mb-1">主机名 (IP)</label>
+                      <input value={sshHost} onChange={e => setSshHost(e.target.value)}
+                        placeholder="192.168.x.x" autoFocus
+                        className="w-full px-3 py-2 text-sm border border-[#e2e8f0] rounded-lg outline-none focus:border-[#2563eb] font-mono" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] text-[#94a3b8] block mb-1">端口</label>
+                        <input value={sshPort} onChange={e => setSshPort(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-[#e2e8f0] rounded-lg outline-none focus:border-[#2563eb] font-mono" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-[#94a3b8] block mb-1">密码</label>
+                        <div className="relative">
+                          <input value={sshPassword} onChange={e => setSshPassword(e.target.value)}
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="CherryYoudao"
+                            className="w-full px-3 py-2 text-sm border border-[#e2e8f0] rounded-lg outline-none focus:border-[#2563eb] font-mono pr-8" />
+                          <button type="button" onClick={() => setShowPassword(v => !v)}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-[#0f172a] p-0.5">
+                            {showPassword ? (
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            ) : (
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-[#94a3b8]">
+                      默认用户名 <code className="bg-[#f1f5f9] px-1 rounded">root</code>
+                      <br />需先开启 SSH 运行 + 开机自启
+                    </p>
+                    {deviceStatus === 'error' && (
+                      <p className="text-[10px] text-[#dc2626] bg-[#fef2f2] px-2 py-1 rounded">{error}</p>
+                    )}
+                    {deviceStatus === 'connecting' ? (
+                      <div className="w-full py-2 text-xs bg-[#e2e8f0] text-[#64748b] rounded-lg text-center flex items-center justify-center gap-2">
+                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.3"/><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                        连接中…
+                      </div>
+                    ) : (
+                      <button onClick={() => handleSshConnect()} disabled={!sshHost}
+                        className="w-full py-2 text-xs bg-[#0f172a] text-white rounded-lg hover:bg-[#1e293b] disabled:opacity-40">
+                        连接 SSH
+                      </button>
+                    )}
+                    <p className="text-[10px] text-[#94a3b8] text-center">
+                      Vite 已内置 SSH 代理，无需额外启动
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button onClick={handleConnect} disabled={deviceStatus === 'connecting'}
+              className="text-xs px-2.5 py-1 bg-[#2563eb] text-white rounded-md hover:bg-[#1d4ed8] disabled:opacity-50">
+              {deviceStatus === 'connecting' ? '连接中…' : 'USB 连接'}
+            </button>
+          )}
+          </div>
+      {/* 连接错误提示 — 独立一行，不挤压标签 */}
+      {error && deviceStatus === 'error' && (
+        <div className="px-4 pb-2">
+          <div className="flex items-center gap-2 text-[10px] text-[#dc2626] bg-[#fef2f2] border border-[#fecaca] rounded-lg px-3 py-1.5">
+            <span>⚠</span>
+            <span className="flex-1">{error}</span>
+            <button onClick={() => setError(null)} className="text-[#94a3b8] hover:text-[#64748b] flex-shrink-0">✕</button>
+          </div>
+        </div>
+      )}
+        </header>
+
+        <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-8 space-y-6">
 
         {activeTab === 'penmods' && (
         <>
@@ -996,6 +990,7 @@ function App() {
           <span>©{BRAND.year} {BRAND.author}</span>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
