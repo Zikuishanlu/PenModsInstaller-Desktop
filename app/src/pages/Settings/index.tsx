@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ghGet, getOwner, getToken, setOwner, setToken } from '../../lib/github';
 import { BRAND } from '../../lib/branding';
+import { checkInstallerUpdate, type UpdateCheck } from '../../lib/updates';
 import {
   IconCheck, IconEye, IconEyeOff, IconRefresh, IconSettings, IconShield, IconTrash,
 } from '../../components/icons';
@@ -78,6 +79,11 @@ export function Settings(props: SettingsProps) {
   const [checking, setChecking] = useState(false);
   // 关于
   const [version, setVersion] = useState('');
+  // 检查更新
+  const [update, setUpdate] = useState<UpdateCheck | null>(null);
+  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'done' | 'error'>('idle');
+  const [updateErr, setUpdateErr] = useState('');
+  const [checkedAt, setCheckedAt] = useState('');
   // 本地数据
   const [cleared, setCleared] = useState(false);
 
@@ -94,6 +100,12 @@ export function Settings(props: SettingsProps) {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // 版本号到手后自动查一次，省得用户还得自己点
+  useEffect(() => {
+    if (version && updateState === 'idle') void runUpdateCheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, updateState]);
 
   const saveToken = () => {
     setToken(token);
@@ -112,6 +124,22 @@ export function Settings(props: SettingsProps) {
     if (/ENOTFOUND|EAI_AGAIN/i.test(text)) return '域名解析失败，检查网络或 hosts 文件';
     if (/ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(text)) return '连不上 GitHub，检查网络（代理/加速器）';
     return text;
+  };
+
+  /** 检查桌面端本体有没有新版本（只看 GitHub Release 的 tag） */
+  const runUpdateCheck = async () => {
+    if (!version) return;
+    setUpdateState('checking');
+    setUpdateErr('');
+    try {
+      const result = await checkInstallerUpdate(version);
+      setUpdate(result);
+      setUpdateState('done');
+      setCheckedAt(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+    } catch (e) {
+      setUpdateErr(friendlyGhError(e instanceof Error ? e.message : String(e)));
+      setUpdateState('error');
+    }
   };
 
   const checkRate = async () => {
@@ -338,6 +366,57 @@ export function Settings(props: SettingsProps) {
         desc={`${BRAND.appName}${version ? ' · v' + version : ''}`}
         icon={<IconCheck className="w-4 h-4" />}
       >
+        {/* 检查更新：桌面端本体，跟设备侧 OTA 无关 */}
+        <div className="border border-[#e2e8f0] rounded-lg px-3 py-2 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-[#0f172a] font-medium">
+              桌面端本体 {version ? 'v' + version : '—'}
+            </span>
+            <button
+              onClick={() => void runUpdateCheck()}
+              disabled={updateState === 'checking' || !version}
+              className="text-[11px] px-2.5 py-1 border border-[#e2e8f0] rounded-lg text-[#334155] hover:bg-[#f8fafc] disabled:opacity-50 flex items-center gap-1"
+            >
+              <IconRefresh className={`w-3.5 h-3.5 ${updateState === 'checking' ? 'animate-spin' : ''}`} />
+              {updateState === 'checking' ? '检查中…' : '检查更新'}
+            </button>
+            {updateState === 'done' && update && !update.hasUpdate && (
+              <span className="text-[11px] text-[#15803d]">已是最新版本</span>
+            )}
+            {updateState === 'done' && update && update.hasUpdate && (
+              <span className="text-[11px] text-[#b45309] font-medium">有新版本 v{update.latest}</span>
+            )}
+            {checkedAt && <span className="text-[10px] text-[#94a3b8]">{checkedAt} 检查</span>}
+          </div>
+          {updateState === 'error' && (
+            <p className="text-[11px] text-[#dc2626]">{updateErr || '检查失败'}</p>
+          )}
+          {updateState === 'done' && update && update.hasUpdate && (
+            <>
+              <p className="text-[11px] text-[#64748b]">
+                当前 v{update.current} → 最新 v{update.latest}
+                {update.publishedAt && ` · ${update.publishedAt.slice(0, 10)} 发布`}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href={update.url}
+                  target="_blank"
+                  rel="noopener"
+                  className="text-[11px] px-2.5 py-1 bg-[#2563eb] text-white rounded-lg hover:bg-[#1d4ed8]"
+                >
+                  去下载新版本
+                </a>
+                <span className="text-[10px] text-[#94a3b8]">不会自动更新，下载后关掉本程序再安装</span>
+              </div>
+              {update.notes && (
+                <pre className="text-[10px] text-[#64748b] bg-[#f8fafc] border border-[#e2e8f0] rounded-lg p-2 max-h-32 overflow-auto whitespace-pre-wrap break-words">
+                  {update.notes}
+                </pre>
+              )}
+            </>
+          )}
+        </div>
+
         <div className="text-[11px] text-[#64748b] space-y-1.5">
           <p>
             本项目基于 <a href={BRAND.upstream} target="_blank" rel="noopener" className="text-[#2563eb] hover:underline">PenUniverse/PenMods</a>

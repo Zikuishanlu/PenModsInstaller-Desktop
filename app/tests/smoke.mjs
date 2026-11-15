@@ -58,6 +58,7 @@ const filesLib = await import(libPath('files'));
 const gh = await import(libPath('github'));
 const store = await import(libPath('app-store'));
 const stepsLib = await import(libPath('steps'));
+const updatesLib = await import(libPath('updates'));
 const installerLib = await import(libPath('installer'));
 
 // 渲染层用 localStorage 存 token/owner；Node 下给个替身
@@ -143,6 +144,33 @@ await attempt('自定义安装包脚本带 set -e 与完成标记', () => {
   if (!pkg.script.startsWith('set -e')) return '缺少 set -e';
   if (!/echo "安装完成"/.test(pkg.script)) return '缺少完成标记';
   return pkg.id === 'custom_MyApp-1.2.3' ? true : 'id=' + pkg.id;
+});
+
+await attempt('版本比较：新旧/相同/补零', () => {
+  if (updatesLib.compareVersions('1.0.1', '1.0.0') <= 0) return '1.0.1 应比 1.0.0 新';
+  if (updatesLib.compareVersions('1.0.0', '1.0.1') >= 0) return '1.0.0 应比 1.0.1 旧';
+  if (updatesLib.compareVersions('1.2', '1.2.0') !== 0) return '1.2 应等于 1.2.0';
+  if (updatesLib.compareVersions('v2.0.0', '1.9.9') <= 0) return 'v 前缀应被忽略';
+  return true;
+});
+
+await attempt('更新判定：有新版本时给下载页', () => {
+  const r = updatesLib.evaluateRelease('1.0.0', {
+    tag_name: 'v1.0.1',
+    html_url: 'https://github.com/x/y/releases/tag/v1.0.1',
+    body: '  - 修了个 bug\n',
+    published_at: '2026-11-01T00:00:00Z',
+  });
+  if (!r.hasUpdate) return '没识别出新版本';
+  if (r.latest !== '1.0.1') return 'latest=' + r.latest;
+  if (!r.url.includes('/releases/tag/')) return 'url=' + r.url;
+  if (r.notes !== '- 修了个 bug') return 'notes=' + JSON.stringify(r.notes);
+  return true;
+});
+
+await attempt('更新判定：同一个版本不算更新', () => {
+  const r = updatesLib.evaluateRelease('1.0.0', { tag_name: 'v1.0.0', html_url: 'u' });
+  return !r.hasUpdate ? true : '误报有新版本';
 });
 
 await attempt('安装步骤表顺序完整', () => {
