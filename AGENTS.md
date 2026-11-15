@@ -7,10 +7,12 @@ PenMods 桌面安装器：有道词典笔 PenMods 的一键安装器。Electron 
 All commands run from `app/`.
 
 - `npm run dev` — Vite dev server + Electron
-- `npm run build` — `tsc -b && vite build`
-- `npm run typecheck` — `tsc -b`
-- `npm run dist` — build + electron-builder（Windows NSIS + portable）
-- `npx vitest run` — 单元测试（`src/**/*.test.ts`，node 环境）
+- `npm run build` — `vite build`（只打包渲染层，**不含** `tsc -b`）
+- `npm run typecheck` — `tsc -b`，Electron 主进程与渲染层的类型检查都走这个
+- `npm run dist` — `vite build` + electron-builder（Windows NSIS + portable）
+
+单测在 `app/src/**/__tests__/*.test.ts`（vitest，node 环境），但 **vitest 不在 devDependencies 里**，
+也没有 `npm test` 脚本 —— 跑测试要先 `npm i -D vitest`；CI 目前只跑 typecheck + build。
 
 ## Conventions
 

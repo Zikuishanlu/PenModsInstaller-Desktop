@@ -164,7 +164,9 @@ export default defineConfig({
   ],
   base: './',
   server: {
-    host: '0.0.0.0', port: 5173, open: false,
+    // 只绑回环：dev 期间 /ws/ssh 会把本机当 SSH 跳板，绑 0.0.0.0 等于对
+    // 整个局域网开放一个免认证的 SSH 代理（默认用户名/密码还是设备出厂值）。
+    host: '127.0.0.1', port: 5173, open: false,
     headers: {
       'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data: blob:; font-src 'self' data:;",
     },

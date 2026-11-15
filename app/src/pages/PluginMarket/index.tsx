@@ -45,7 +45,12 @@ export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
 
   const refreshInstalled = useCallback(async () => {
     if (!connected || !conn) { setInstalled([]); return; }
-    setInstalled(await listInstalledPluginDirs(conn));
+    try {
+      setInstalled(await listInstalledPluginDirs(conn));
+    } catch (e) {
+      // 读不出来 ≠ 没装。给用户一个明确错误，别静默展示空列表。
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }, [connected, conn]);
 
   const load = useCallback(async (force: boolean, forOwner: string) => {

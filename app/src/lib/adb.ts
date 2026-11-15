@@ -2,6 +2,7 @@ import {
   Adb,
   AdbDaemonTransport,
   type AdbCredentialStore,
+  type AdbSocket,
   LinuxFileType,
 } from '@yume-chan/adb';
 import { ConcatStringStream, TextDecoderStream } from '@yume-chan/stream-extra';
@@ -81,6 +82,25 @@ function unquoteBusyboxLsName(s: string): Uint8Array {
     }
   }
   return new Uint8Array(bytes);
+}
+
+/**
+ * 单条设备命令的默认超时。设备（或 USB 链路）卡死时 createSocket/readable 会永远不
+ * 返回；安装流程没有二次确认机会，所以这里必须自己兜底，否则界面永久停在“安装中”。
+ */
+const SHELL_TIMEOUT_MS = 60_000;
+/** 多语句脚本（解压、patch 等）允许更久 */
+const SCRIPT_TIMEOUT_MS = 180_000;
+
+/** 给任意 Promise 加超时，超时后 reject（原 Promise 不再等待，结果丢弃） */
+function withTimeout<T>(p: PromiseLike<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(p).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
 }
 
 export class AdbManager implements DeviceConnection {
@@ -211,6 +231,9 @@ export class AdbManager implements DeviceConnection {
 
     this.emit({ type: 'status', message: '正在进行 ADB 协议握手…' });
     this.emit({ type: 'log', message: '[5/5] ADB 认证 (RSA 密钥交换)…' });
+    // 握手失败必须释放 USB 接口：否则设备一直显示被占用，重试只会得到 DeviceBusyError，
+    // 用户只能拔线。connection.close() 由 @yume-chan/adb-daemon-webusb 负责 releaseInterface。
+    let handshakeOk = false;
     try {
       // 先尝试最小特性集（兼容老设备）
       this.emit({ type: 'log', message: '尝试使用最小兼容模式连接…' });
@@ -220,6 +243,7 @@ export class AdbManager implements DeviceConnection {
         credentialStore: this.credentialStore,
         features: [],
       });
+      handshakeOk = true;
       this.emit({ type: 'log', message: 'ADB 认证成功, 序列号: ' + this.transport.serial });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -232,12 +256,25 @@ export class AdbManager implements DeviceConnection {
           connection,
           credentialStore: this.credentialStore,
         });
-        this.emit({ type: 'log', message: 'ADB 认证成功, 序列号: ' + this.transport.serial });
+        handshakeOk = true;
+      this.emit({ type: 'log', message: 'ADB 认证成功, 序列号: ' + this.transport.serial });
       } catch (e2) {
         const msg2 = e2 instanceof Error ? e2.message : String(e2);
         const name2 = e2 instanceof Error ? e2.name : 'UnknownError';
         this.emit({ type: 'log', message: '默认模式也失败: [' + name2 + '] ' + msg2 });
         throw new Error('ADB 握手失败，设备可能不支持标准 ADB 协议。');
+      }
+    } finally {
+      if (!handshakeOk) {
+        // AdbDaemonWebUsbConnection 没有 close()；取消它的可读/可写流才会走到内部
+        // DuplexStreamFactory 的 close → device.raw.close() → releaseInterface。
+        const c = connection as unknown as {
+          readable?: ReadableStream<unknown>;
+          writable?: WritableStream<unknown>;
+        };
+        await Promise.resolve(c.writable?.abort()).catch(() => {});
+        await Promise.resolve(c.readable?.cancel()).catch(() => {});
+        this.emit({ type: 'log', message: '已释放 USB 接口，可直接重试' });
       }
     }
 
@@ -273,15 +310,35 @@ export class AdbManager implements DeviceConnection {
   }
 
 async shellCommand(command: string): Promise<string> {
+    return this.runShellSocket('shell:exec ' + command, command, SHELL_TIMEOUT_MS);
+  }
+
+  /**
+   * 打开一个 adb shell socket，读完输出，并且**一定**在结束时 close。
+   * 不 close 会让设备端一直挂着一个 sh 进程，直到设备重启。
+   */
+  private async runShellSocket(open: string, shown: string, timeoutMs: number): Promise<string> {
     if (!this.adb) throw new Error('设备未连接');
-    this.emit({ type: 'log', message: '$ ' + command });
-    const socket = await this.adb.createSocket('shell:exec ' + command);
-    const readResult = await socket.readable
-      .pipeThrough(new TextDecoderStream())
-      .pipeThrough(new ConcatStringStream());
-    const trimmed = readResult.trim();
-    if (trimmed) this.emit({ type: 'log', message: trimmed });
-    return trimmed;
+    this.emit({ type: 'log', message: '$ ' + shown });
+    const socket: AdbSocket = await withTimeout(
+      this.adb.createSocket(open),
+      timeoutMs,
+      '打开设备 shell 超时（' + Math.round(timeoutMs / 1000) + 's），请检查数据线或重启设备',
+    );
+    try {
+      const readResult = await withTimeout(
+        socket.readable
+          .pipeThrough(new TextDecoderStream())
+          .pipeThrough(new ConcatStringStream()),
+        timeoutMs,
+        '设备命令执行超时（' + Math.round(timeoutMs / 1000) + 's）：' + shown.slice(0, 80),
+      );
+      const trimmed = readResult.trim();
+      if (trimmed) this.emit({ type: 'log', message: trimmed });
+      return trimmed;
+    } finally {
+      await Promise.resolve(socket.close()).catch(() => {});
+    }
   }
 
   /**
@@ -290,15 +347,7 @@ async shellCommand(command: string): Promise<string> {
    * （`shellCommand` 用的 `shell:exec ` 会把命令包成 `exec <cmd>`，组合语句会被截断。）
    */
   async shellScript(script: string): Promise<string> {
-    if (!this.adb) throw new Error('设备未连接');
-    this.emit({ type: 'log', message: '$ ' + script.replace(/\s+/g, ' ').slice(0, 200) });
-    const socket = await this.adb.createSocket('shell:' + script);
-    const readResult = await socket.readable
-      .pipeThrough(new TextDecoderStream())
-      .pipeThrough(new ConcatStringStream());
-    const trimmed = readResult.trim();
-    if (trimmed) this.emit({ type: 'log', message: trimmed });
-    return trimmed;
+    return this.runShellSocket('shell:' + script, script.replace(/\s+/g, ' ').slice(0, 200), SCRIPT_TIMEOUT_MS);
   }
 
   /**
@@ -403,8 +452,12 @@ async shellCommand(command: string): Promise<string> {
         return Promise.resolve();
       },
     });
-    await (sync.write)({ filename: remotePath, file: stream as any, permission: 0o755 });
-    await sync.dispose();
+    // sync 会话必须 dispose，否则后续 sync 操作会卡在同一会话上
+    try {
+      await (sync.write)({ filename: remotePath, file: stream as any, permission: 0o755 });
+    } finally {
+      await Promise.resolve(sync.dispose()).catch(() => {});
+    }
   }
 
   /**

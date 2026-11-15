@@ -64,7 +64,13 @@ export function Shell({ adb, connected, connectionType }: ShellProps) {
           term.write('\r\n\x1b[31m[连接已关闭]\x1b[0m\r\n');
         },
       );
-      term.onData((data) => shellWrite(data));
+      // 保存 disposable：不 dispose 的话每次进终端页都往 xterm 上再挂一个监听
+      const sshData = term.onData((data) => shellWrite(data));
+      const prevCleanup = cleanup;
+      cleanup = () => {
+        prevCleanup();
+        sshData.dispose();
+      };
     } else if (connectionType === 'usb' && adb) {
       // ── USB/ADB 模式 ──
       const startADBShell = async () => {
@@ -95,8 +101,12 @@ export function Shell({ adb, connected, connectionType }: ShellProps) {
           cleanup = () => {
             window.removeEventListener('resize', onResize);
             container.removeEventListener('click', focusTerm);
-            writer.close().catch(() => {});
             dispose.dispose();
+            // 只关 writer 不会结束设备上的 shell：PTY 进程会一直挂着，
+            // 每进一次终端页就泄漏一个。顺手取消读取循环。
+            reader.cancel().catch(() => {});
+            writer.close().catch(() => {});
+            try { (pty as any).kill?.(); } catch { /* 已退出 */ }
           };
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);

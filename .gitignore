@@ -20,3 +20,4 @@ desktop.ini
 
 # 上游源码镜像（仅本地参考，不是本项目代码）
 src-upstream/
+.memsearch/

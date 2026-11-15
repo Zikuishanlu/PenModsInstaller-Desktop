@@ -1,15 +1,22 @@
 import { describe, it, expect } from 'vitest';
+import {
+  dirname,
+  basename,
+  decodeZipName,
+  pickMetadata,
+  resolveName,
+  sanitizePluginName,
+  safeJoin,
+  PLUGINS_DIR,
+} from '../plugin-install';
 
-// Test pure helper functions from plugin-install.ts
-// These aren't exported but are critical for correctness
+// 直接 import 真实实现。
+// 以前这里把 dirname/basename/decodeZipName/pickMetadata/resolveName 的代码
+// 复制进测试文件，断言的是副本 —— 真实实现改坏了测试照样「通过」
+// （resolveName 里有 bug 的正则也是这么一起抄进来的）。
 
 describe('plugin-install helpers', () => {
   describe('dirname', () => {
-    const dirname = (p: string) => {
-      const i = p.lastIndexOf('/');
-      return i >= 0 ? p.slice(0, i) : '';
-    };
-
     it('extracts dirname from path', () => {
       expect(dirname('a/b/c.json')).toBe('a/b');
     });
@@ -22,10 +29,6 @@ describe('plugin-install helpers', () => {
   });
 
   describe('basename', () => {
-    const basename = (p: string) => {
-      return p.split('/').filter(Boolean).pop() || '';
-    };
-
     it('extracts basename from path', () => {
       expect(basename('a/b/file.txt')).toBe('file.txt');
     });
@@ -38,15 +41,6 @@ describe('plugin-install helpers', () => {
   });
 
   describe('decodeZipName', () => {
-    const decodeZipName = (bytes: Uint8Array): string => {
-      try {
-        return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-      } catch {
-        try { return new TextDecoder('gbk').decode(bytes); }
-        catch { return new TextDecoder('utf-8').decode(bytes); }
-      }
-    };
-
     it('decodes UTF-8 names', () => {
       const bytes = new TextEncoder().encode('metadata.json');
       expect(decodeZipName(bytes)).toBe('metadata.json');
@@ -67,17 +61,6 @@ describe('plugin-install helpers', () => {
   });
 
   describe('pickMetadata', () => {
-    const pickMetadata = (paths: string[]): string | null => {
-      const cands = paths.filter(p => {
-        const lp = p.toLowerCase();
-        return lp.endsWith('/metadata.json') || lp === 'metadata.json';
-      });
-      if (cands.length === 0) return null;
-      const score = (p: string) => (/(源码|source|\/src\/|\bsrc\/)/i.test(p) ? 1000 : 0) + p.split('/').length;
-      cands.sort((a, b) => score(a) - score(b));
-      return cands[0];
-    };
-
     it('finds root metadata.json', () => {
       expect(pickMetadata(['metadata.json', 'main.qml'])).toBe('metadata.json');
     });
@@ -87,10 +70,7 @@ describe('plugin-install helpers', () => {
     });
 
     it('prefers non-source metadata over source', () => {
-      const paths = [
-        'src/metadata.json',
-        'plugin/metadata.json',
-      ];
+      const paths = ['src/metadata.json', 'plugin/metadata.json'];
       expect(pickMetadata(paths)).toBe('plugin/metadata.json');
     });
 
@@ -99,11 +79,7 @@ describe('plugin-install helpers', () => {
     });
 
     it('picks the shallowest non-source metadata', () => {
-      const paths = [
-        'a/metadata.json',
-        'a/b/metadata.json',
-        'src/metadata.json',
-      ];
+      const paths = ['a/metadata.json', 'a/b/metadata.json', 'src/metadata.json'];
       expect(pickMetadata(paths)).toBe('a/metadata.json');
     });
 
@@ -113,17 +89,8 @@ describe('plugin-install helpers', () => {
   });
 
   describe('resolveName', () => {
-    const resolveName = (meta: Record<string, any>, rootDir: string): string => {
-      const iconMatch = String(meta.icon || '').match(/plugins\/([^/]+)\//);
-      if (iconMatch) return iconMatch[1];
-      const base = rootDir.split('/').filter(Boolean).pop() || '';
-      if (base) return base;
-      return String(meta.id || meta.name || 'plugin').replace(/[^\w.\-]+/g, '_');
-    };
-
     it('resolves from icon path', () => {
-      const meta = { icon: 'plugins/my-plugin/icon.png' };
-      expect(resolveName(meta, '')).toBe('my-plugin');
+      expect(resolveName({ icon: 'plugins/my-plugin/icon.png' }, '')).toBe('my-plugin');
     });
 
     it('falls back to root dir basename', () => {
@@ -131,23 +98,54 @@ describe('plugin-install helpers', () => {
     });
 
     it('falls back to id', () => {
-      const meta = { id: 'fallback-id' };
-      expect(resolveName(meta, '')).toBe('fallback-id');
+      expect(resolveName({ id: 'fallback-id' }, '')).toBe('fallback-id');
     });
 
     it('falls back to name (space sanitized)', () => {
-      const meta = { name: 'My Plugin' };
-      expect(resolveName(meta, '')).toBe('My_Plugin');
+      expect(resolveName({ name: 'My Plugin' }, '')).toBe('My_Plugin');
     });
 
     it('sanitizes name with special chars (underscore)', () => {
-      const meta = { name: 'bad/name:test' };
-      expect(resolveName(meta, '')).toBe('bad_name_test');
+      expect(resolveName({ name: 'bad/name:test' }, '')).toBe('bad_name_test');
     });
 
     it('icon path takes priority over root dir', () => {
-      const meta = { icon: 'plugins/icon-version/icon.png' };
-      expect(resolveName(meta, 'plugins/outdated-name')).toBe('icon-version');
+      expect(resolveName({ icon: 'plugins/icon-version/icon.png' }, 'plugins/outdated-name')).toBe('icon-version');
+    });
+  });
+
+  describe('sanitizePluginName', () => {
+    it('keeps ordinary names untouched', () => {
+      expect(sanitizePluginName('my-plugin_1.0')).toBe('my-plugin_1.0');
+    });
+
+    it('keeps CJK names', () => {
+      expect(sanitizePluginName('输入法增强')).toBe('输入法增强');
+    });
+
+    it('strips shell metacharacters from a command-injection payload', () => {
+      // metadata.icon 里的 name 会拼进设备上的 mkdir/unzip 命令
+      expect(sanitizePluginName('a";reboot;#')).toBe('a_reboot_');
+    });
+
+    it('rejects traversal names', () => {
+      expect(sanitizePluginName('..')).toBe('');
+      expect(sanitizePluginName('../..')).toBe('');
+      expect(sanitizePluginName('')).toBe('');
+    });
+  });
+
+  describe('safeJoin', () => {
+    it('joins normal relative paths', () => {
+      expect(safeJoin(PLUGINS_DIR, 'qml/main.qml')).toBe(PLUGINS_DIR + '/qml/main.qml');
+    });
+
+    it('rejects path traversal', () => {
+      expect(() => safeJoin(PLUGINS_DIR, '../../system/bin/x')).toThrow();
+    });
+
+    it('rejects absolute paths', () => {
+      expect(() => safeJoin(PLUGINS_DIR, '/etc/passwd')).toThrow();
     });
   });
 });

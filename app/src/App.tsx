@@ -1,4 +1,4 @@
-import { Component, useState, useCallback, useRef, useEffect } from 'react';
+import { Component, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { AdbManager, type AdbProgressEvent, type DeviceStatus as DeviceStatusType } from './lib/adb';
 import { Installer } from './lib/installer';
 import { createSSHConnection } from './lib/device';
@@ -92,17 +92,21 @@ function App() {
   });
   const [sshHost, setSshHost] = useState(() => localStorage.getItem('sshHost') || '');
   const [sshPort, setSshPort] = useState(() => localStorage.getItem('sshPort') || '22');
-  const [sshPassword, setSshPassword] = useState(() => localStorage.getItem('sshPassword') || '');
+  const [sshPassword, setSshPassword] = useState('');
   const [showSshPanel, setShowSshPanel] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
+  // 卸载/重置等一次性操作的提示（不进安装日志区，那块只在安装时渲染）
+  const [notice, setNotice] = useState<{ kind: 'info' | 'error' | 'success'; text: string } | null>(null);
 
   // 持久化 SSH 配置
   useEffect(() => { localStorage.setItem('connMode', connMode); }, [connMode]);
   useEffect(() => { localStorage.setItem('sshHost', sshHost); }, [sshHost]);
   useEffect(() => { localStorage.setItem('sshPort', sshPort); }, [sshPort]);
-  useEffect(() => { localStorage.setItem('sshPassword', sshPassword); }, [sshPassword]);
+  // 密码是设备的 root 口令，不再落盘（旧版本曾明文存 localStorage）。
+  // 顺手清掉历史遗留的那一份。
+  useEffect(() => { localStorage.removeItem('sshPassword'); }, []);
 
   // 自动滚动日志
   useEffect(() => {
@@ -189,6 +193,10 @@ function App() {
       setDeviceStatus('error');
       setError(msg);
       setLog(prev => [...prev, `[error] ${msg}`]);
+      // 半初始化的实例不能留着：市场/OTA 页会拿它当可用连接继续用，
+      // 后续报错信息与真实原因错位。
+      adbRef.current = null;
+      await adb.disconnect().catch(() => {});
     }
   };
 
@@ -365,32 +373,33 @@ function App() {
   /** 卸载 PenMods（只移除 Mod，不清除用户数据） */
   const handleUninstall = async () => {
     if (!confirm('确定要卸载 PenMods 吗？\n\n将恢复原版应用并删除 Mod 文件，不会清除词典笔的个人数据。')) return;
-    setLog([]);
-    setLog(prev => [...prev, '[info] 开始卸载 PenMods…']);
 
     // PenMods 卸载仅支持 USB
     const adb = adbRef.current;
     if (connMode === 'ssh' || !adb) { setError('PenMods 卸载仅支持 USB 模式'); return; }
 
+    // 以前全程只写 setLog，而日志区只在安装流程里渲染，
+    // 卸载的进度和失败用户完全看不见 —— 改用独立的提示区。
+    setNotice({ kind: 'info', text: '开始卸载 PenMods…' });
     try {
-      setLog(prev => [...prev, '[info] 挂载可写…']);
       await adb.shellCommand('mount -o remount,rw /');
 
-      setLog(prev => [...prev, '[info] 恢复原版应用…']);
+      setNotice({ kind: 'info', text: '正在恢复原版应用…' });
       const bakResult = await adb.shellCommand('mv /oem/YoudaoDictPen/output/YoudaoDictPen.original_bak /oem/YoudaoDictPen/output/YoudaoDictPen 2>&1');
-      setLog(prev => [...prev, '[info] ' + (bakResult || 'ok')]);
+      if (/No such file|cannot stat|cannot access/i.test(bakResult || '')) {
+        throw new Error('找不到原版应用备份（YoudaoDictPen.original_bak），设备可能未安装过 PenMods 或备份已被清理');
+      }
 
-      setLog(prev => [...prev, '[info] 删除 Mod 文件…']);
+      setNotice({ kind: 'info', text: '正在删除 Mod 文件…' });
       await adb.shellCommand('rm -rf /userdata/PenMods');
       await adb.shellCommand('rm -f /usr/bin/patchelf');
-      setLog(prev => [...prev, '[success] PenMods 已移除']);
 
-      setLog(prev => [...prev, '[info] 重启设备…']);
+      setNotice({ kind: 'info', text: '正在重启设备…' });
       await adb.reboot();
-      setLog(prev => [...prev, '[success] 卸载完成，设备正在重启']);
+      setNotice({ kind: 'success', text: '卸载完成，设备正在重启' });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setLog(prev => [...prev, '[error] 卸载失败: ' + msg]);
+      setNotice({ kind: 'error', text: '卸载失败: ' + msg });
     }
   };
 
@@ -405,7 +414,14 @@ function App() {
   };
 
   // 市场/OTA 页面统一使用的设备连接（SSH 模式现取现用，USB 模式复用 ADB 管理器）
-  const deviceConn: DeviceConnection | null = connMode === 'ssh' ? createSSHConnection() : adbRef.current;
+  // SSH 连接对象必须缓存：下游 `useEffect(() => refreshInstalled(), [conn])` 依赖它，
+  // 每次渲染新建对象会变成 渲染→拉取→setState→渲染 的死循环（把设备 IO 打满）。
+  const sshConn = useMemo(
+    () => createSSHConnection(),
+    // 这几个 state 变了才需要换连接；createSSHConnection 本身无参数，靠模块内状态
+    [connMode, sshHost, sshPort, sshPassword],
+  );
+  const deviceConn: DeviceConnection | null = connMode === 'ssh' ? sshConn : adbRef.current;
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
@@ -774,6 +790,20 @@ function App() {
             </div>
           )}
         </section>
+
+        {/* ===== 一次性操作提示（卸载等不走安装日志区的操作）===== */}
+        {notice && (
+          <section className={`card flex items-start gap-3 text-sm border ${
+            notice.kind === 'error'
+              ? 'border-[#dc2626] bg-[#fef2f2] text-[#b91c1c]'
+              : notice.kind === 'success'
+                ? 'border-[#16a34a] bg-[#f0fdf4] text-[#15803d]'
+                : 'border-[#e2e8f0] text-[#334155]'
+          }`}>
+            <span className="flex-1">{notice.text}</span>
+            <button onClick={() => setNotice(null)} className="text-xs opacity-60 hover:opacity-100">关闭</button>
+          </section>
+        )}
 
         {/* ===== 进度/日志 ===== */}
         {(step === 'installing' || step === 'done' || step === 'error') && (

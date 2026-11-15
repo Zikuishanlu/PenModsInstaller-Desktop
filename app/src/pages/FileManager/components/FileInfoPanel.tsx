@@ -54,20 +54,26 @@ export function FileInfoPanel({
     }
     setLoadingThumb(true);
     const path = currentPath + '/' + file.name;
+    // 用局部变量 + cancelled 标记管 URL 生命周期：thumbnailUrl 在闭包里永远是旧值，
+    // 依赖数组里也没有它，靠它 revoke 会漏掉刚建出来的那个 blob。
+    let created: string | null = null;
+    let cancelled = false;
     adb.readFile(path).then(data => {
+      if (cancelled) return;
       const blob = new Blob([data as BlobPart]);
-      const url = URL.createObjectURL(blob);
-      setThumbnailUrl(url);
+      created = URL.createObjectURL(blob);
+      setThumbnailUrl(created);
     }).catch(() => {
-      setThumbnailUrl(null);
+      if (!cancelled) setThumbnailUrl(null);
     }).finally(() => {
-      setLoadingThumb(false);
+      if (!cancelled) setLoadingThumb(false);
     });
 
     return () => {
-      if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl);
+      cancelled = true;
+      if (created) URL.revokeObjectURL(created);
     };
-  }, [file?.name, file?.sizeBytes]);
+  }, [file?.name, file?.sizeBytes, currentPath, adb]);
 
   if (!visible) return null;
 

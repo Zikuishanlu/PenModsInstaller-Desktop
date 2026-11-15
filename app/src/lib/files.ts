@@ -72,6 +72,12 @@ export async function getInstallFilesFromZip(zip: any): Promise<ZipParseResult> 
 
     const content = await entry.async('uint8array');
     const stripped = stripPrefix(entryPath);
+    // ZIP 条目名不可信：带 ../ 或绝对路径的条目会在设备端（root）写出
+    // /userdata/PenMods 之外，覆盖系统文件。这里直接丢弃并记一条警告。
+    if (!stripped || stripped.startsWith('/') || stripped.split('/').includes('..')) {
+      warnings.push(`已跳过可疑路径 ${entryPath}`);
+      continue;
+    }
     const name = stripped.split('/').pop() || stripped;
 
     let remotePath = '';

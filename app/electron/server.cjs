@@ -56,6 +56,36 @@ const ALLOW_HOSTS = new Set([
 
 const GH_PATH_PREFIXES = ['/users/', '/repos/', '/search/', '/orgs/', '/rate_limit', '/releases'];
 
+// 一次命令执行最多回传这么多字符，避免设备上 `cat /dev/zero` 之类把主进程内存吃满
+const MAX_EXEC_CHARS = 4 * 1024 * 1024;
+
+// 服务只绑回环地址，但 Host 头仍可被 DNS rebinding 伪造（攻击者域名解析到
+// 127.0.0.1 后浏览器会认为同源），所以每个请求都校验 Host 是回环名。
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+
+function isLoopbackHost(hostHeader) {
+  if (!hostHeader) return false;
+  const host = String(hostHeader).replace(/:\d+$/, '').toLowerCase();
+  return LOOPBACK_HOSTS.has(host);
+}
+
+/** 浏览器发起的 WebSocket 一定带 Origin，只有本机页面发的才放行 */
+function isLoopbackOrigin(origin) {
+  if (!origin) return false;
+  try {
+    const u = new URL(origin);
+    return u.protocol === 'http:' && isLoopbackHost(u.host);
+  } catch {
+    return false;
+  }
+}
+
+/** target 是否在 root 目录内（用 path.relative 判断，避免 dist-evil/ 之类的同前缀绕过） */
+function isInside(root, target) {
+  const rel = path.relative(path.resolve(root), path.resolve(target));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 function sendJson(res, code, obj) {
   const body = Buffer.from(JSON.stringify(obj));
   res.writeHead(code, {
@@ -95,6 +125,34 @@ async function handleGh(req, res, url) {
   }
 }
 
+/**
+ * 跟随重定向，但每一跳都重新校验白名单。
+ * 用 redirect:'follow' 时只有首个 URL 过白名单，白名单站点上一个
+ * 开放重定向就能把请求带去 127.0.0.1 / 169.254.169.254（SSRF）。
+ */
+async function fetchAllowed(u, headers, signal) {
+  let current = u;
+  for (let hop = 0; hop <= 5; hop++) {
+    const r = await fetch(current, { headers, redirect: 'manual', signal });
+    if (r.status < 300 || r.status >= 400) return r;
+    const loc = r.headers.get('location');
+    if (!loc) return r;
+    let next;
+    try {
+      next = new URL(loc, current);
+    } catch {
+      return r;
+    }
+    if (next.protocol !== 'https:' || !ALLOW_HOSTS.has(next.hostname)) {
+      if (r.body) await r.body.cancel().catch(() => {});
+      throw new Error('redirect to disallowed host: ' + next.hostname);
+    }
+    if (r.body) await r.body.cancel().catch(() => {});
+    current = next;
+  }
+  throw new Error('too many redirects');
+}
+
 async function handleDownload(req, res, url) {
   const target = url.searchParams.get('url') || '';
   let u;
@@ -116,7 +174,7 @@ async function handleDownload(req, res, url) {
   const range = req.headers.range;
   if (range) headers.range = range;
   try {
-    const r = await fetch(u, { headers, redirect: 'follow', signal: AbortSignal.timeout(600000) });
+    const r = await fetchAllowed(u, headers, AbortSignal.timeout(600000));
     if (!r.ok) {
       const t = await r.text().catch(() => '');
       return sendJson(res, r.status, { error: `download failed: HTTP ${r.status}`, detail: t.slice(0, 300) });
@@ -153,10 +211,21 @@ function serveStatic(req, res, root, url) {
     res.writeHead(405);
     return res.end();
   }
-  let urlPath = decodeURIComponent(url.pathname);
+  let urlPath;
+  try {
+    urlPath = decodeURIComponent(url.pathname);
+  } catch {
+    // 畸形百分号编码：以前这里抛 URIError，会顺着请求回调冒到 process
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Bad Request');
+  }
+  if (urlPath.indexOf('\0') >= 0) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Bad Request');
+  }
   if (urlPath.endsWith('/')) urlPath += 'index.html';
   const filePath = path.normalize(path.join(root, urlPath));
-  if (!filePath.startsWith(root)) {
+  if (!isInside(root, filePath)) {
     res.writeHead(403);
     return res.end('Forbidden');
   }
@@ -202,6 +271,17 @@ function attachSshProxy(server) {
 
   server.on('upgrade', (req, sock, head) => {
     if (!req.url || !req.url.startsWith('/ws/ssh')) {
+      sock.destroy();
+      return;
+    }
+    // 没有这两道校验时，用户用浏览器随便打开一个恶意页面，对方就能
+    // new WebSocket('ws://127.0.0.1:47821/ws/ssh?...') 拿到词典笔的 root shell。
+    if (!isLoopbackHost(req.headers.host)) {
+      sock.destroy();
+      return;
+    }
+    const origin = req.headers.origin;
+    if (origin && !isLoopbackOrigin(origin)) {
       sock.destroy();
       return;
     }
@@ -298,8 +378,17 @@ function attachSshProxy(server) {
             sshClient.exec(msg.cmd, (err, stream) => {
               if (err) return sendData('error', { id: msg.id, msg: err.message });
               let output = '';
-              stream.on('data', (d) => { output += d.toString(); });
-              stream.stderr.on('data', (d) => { output += d.toString(); });
+              let truncated = false;
+              const collect = (d) => {
+                if (truncated) return;
+                output += d.toString();
+                if (output.length > MAX_EXEC_CHARS) {
+                  output = output.slice(0, MAX_EXEC_CHARS) + '\n[输出过长，已截断]';
+                  truncated = true;
+                }
+              };
+              stream.on('data', collect);
+              stream.stderr.on('data', collect);
               stream.on('close', (code) => sendData('output', { id: msg.id, data: output.trim(), code }));
             });
             break;
@@ -397,6 +486,10 @@ async function startServer({ root, appVersion }) {
     } catch {
       res.writeHead(400);
       return res.end('Bad Request');
+    }
+    if (!isLoopbackHost(req.headers.host)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Forbidden');
     }
     if (url.pathname === '/api/gh') return handleGh(req, res, url);
     if (url.pathname === '/api/dl') return handleDownload(req, res, url);

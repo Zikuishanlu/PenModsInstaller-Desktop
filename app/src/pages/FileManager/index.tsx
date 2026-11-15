@@ -13,6 +13,7 @@ import { useFileOperationsSFTP } from './hooks/useFileOperationsSFTP';
 import { useUpload } from './hooks/useUpload';
 import { useUploadSFTP } from './hooks/useUploadSFTP';
 import { usePreview } from './hooks/usePreview';
+import { sftpReadFile } from '../../lib/ssh';
 
 // Components
 import { ToolBar } from './components/ToolBar';
@@ -96,7 +97,12 @@ export function FileManager({ adb, onLog, connected, connectionType = 'usb' }: F
   const upload = isSSH ? sftpUpload : usbUpload;
   const { uploadFile, uploadProgress, selectFile, uploadFromDrop, handleUploadConfirm, cancelUpload } = upload;
 
-  const { previewFile, closePreview } = usePreview(dispatch, adb);
+  // SSH 模式没有 WebUSB，预览要走 SFTP，否则点预览没有任何反应
+  const previewReader = useMemo(
+    () => (isSSH ? { readFile: sftpReadFile } : adb),
+    [isSSH, adb],
+  );
+  const { previewFile, closePreview } = usePreview(dispatch, previewReader);
 
   // ── 过滤 + 排序 ──
   const displayEntries = useMemo(() => {

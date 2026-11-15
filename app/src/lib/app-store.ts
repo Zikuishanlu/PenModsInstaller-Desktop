@@ -60,6 +60,12 @@ export async function parseCustomPackage(
   return { fileName: pkgFile.name, data, isTarGz, installScript, installScriptName, sizeMB: data.byteLength / 1048576 };
 }
 
+/**
+ * 自定义安装包的设备端脚本。
+ * 脚本开头 `set -e` + installApp 结束后才追加 MARKER：任何一步失败都会中断，
+ * 于是输出里没有 MARKER，调用方就会报错。之前没有 set -e，解压失败后仍会
+ * `echo "安装完成"`，用户看到的是“成功但没生效”。
+ */
 export function buildCustomAppPackage(info: CustomPackageInfo): AppPackage {
   const ext = info.isTarGz ? '.tar.gz' : '.zip';
   const pkgName = info.fileName.replace(/\.(tar\.gz|tgz|zip)$/i, '');
@@ -68,7 +74,8 @@ export function buildCustomAppPackage(info: CustomPackageInfo): AppPackage {
     files.push({ data: new TextEncoder().encode(info.installScript), remotePath: '/userdisk/__custom_install.sh' });
   }
   const script = info.isTarGz
-    ? `echo "解压 ${info.fileName}…"
+    ? `set -e
+echo "解压 ${info.fileName}…"
 cd /userdisk
 tar -xzf __custom.tar.gz
 if [ -f __custom_install.sh ]; then
@@ -78,7 +85,8 @@ if [ -f __custom_install.sh ]; then
 fi
 rm -f /userdisk/__custom.tar.gz /userdisk/__custom_install.sh 2>/dev/null || true
 echo "安装完成"`
-    : `echo "解压 ${info.fileName}…"
+    : `set -e
+echo "解压 ${info.fileName}…"
 cd /userdisk
 unzip -o __custom.zip 2>&1
 if [ -f __custom_install.sh ]; then

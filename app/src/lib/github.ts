@@ -42,7 +42,11 @@ export async function ghGet<T>(path: string): Promise<T> {
   if (token) headers['x-gh-token'] = token;
   let resp: Response;
   try {
-    resp = await fetch('/api/gh?path=' + encodeURIComponent(path), { headers });
+    resp = await fetch('/api/gh?path=' + encodeURIComponent(path), {
+      headers,
+      // 没有超时的话请求挂住，市场页会一直 loading 且无法取消
+      signal: AbortSignal.timeout(30_000),
+    });
   } catch (e) {
     throw new GhError(0, '无法连接 GitHub：' + (e instanceof Error ? e.message : String(e)));
   }
@@ -169,7 +173,11 @@ export async function downloadBytes(
     if (received > 0) headers.Range = `bytes=${received}-`;
     let resp: Response;
     try {
-      resp = await fetch('/api/dl?url=' + encodeURIComponent(url), { headers, cache: 'no-store' });
+      resp = await fetch('/api/dl?url=' + encodeURIComponent(url), {
+        headers,
+        cache: 'no-store',
+        signal: AbortSignal.timeout(30_000),
+      });
     } catch (e) {
       if (attempt === attempts - 1) throw new Error('下载失败：' + (e instanceof Error ? e.message : String(e)));
       await sleep(700 * (attempt + 1));
@@ -177,6 +185,11 @@ export async function downloadBytes(
     }
     if (!resp.ok) {
       const detail = await resp.text().catch(() => '');
+      // 代理/上游抖动（5xx、429）不该让整次断点续传作废
+      if ((resp.status >= 500 || resp.status === 429) && attempt < attempts - 1) {
+        await sleep(1000 * (attempt + 1));
+        continue;
+      }
       throw new Error(`下载失败 HTTP ${resp.status}：${detail.slice(0, 200)}`);
     }
     // 服务器不支持 Range（返回 200 且已有数据）→ 从头来
@@ -186,8 +199,13 @@ export async function downloadBytes(
       total = 0;
     }
     const len = Number(resp.headers.get('content-length') || 0);
-    if (resp.status === 206) total = received + len;
-    else total = len;
+    if (resp.status === 206) {
+      // 206 时 content-length 只是「本段长度」，总长要从 Content-Range 的
+      // "/total" 取。取不到就按未知处理 —— 否则 total 会等于已收字节数，
+      // 任何一次断流都会被判成「下载完整」，损坏的包直接进解压。
+      const m = /\/(\d+)\s*$/.exec(resp.headers.get('content-range') || '');
+      total = m ? Number(m[1]) : 0;
+    } else total = len;
 
     const reader = resp.body?.getReader();
     if (!reader) {
@@ -237,7 +255,12 @@ export async function listInstalledPluginDirs(conn: { readDir(p: string): Promis
   try {
     const entries = await conn.readDir(PLUGINS_DIR);
     return entries.filter(e => e.isDir).map(e => e.name);
-  } catch {
-    return [];
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // 目录不存在 = 干净的新设备，返回空数组；
+    // 其它错误（SSH 抖动、权限不足）必须抛出去 —— 否则 UI 会显示
+    // 「未安装任何插件」并允许重复安装，把设备上的目录结构搞乱。
+    if (/ENOENT|no such file|not found/i.test(msg)) return [];
+    throw new Error('读取设备插件目录失败：' + msg);
   }
 }

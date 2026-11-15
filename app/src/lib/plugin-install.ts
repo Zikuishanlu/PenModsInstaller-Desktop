@@ -42,17 +42,17 @@ export interface PluginPackage {
 
 // ── 内部工具 ──
 
-function dirname(p: string): string {
+export function dirname(p: string): string {
   const i = p.lastIndexOf('/');
   return i >= 0 ? p.slice(0, i) : '';
 }
 
-function basename(p: string): string {
+export function basename(p: string): string {
   return p.split('/').filter(Boolean).pop() || '';
 }
 
 /** UTF-8 严格失败则按 GBK 解码（兼容 Windows 中文压缩包条目名） */
-function decodeZipName(bytes: Uint8Array): string {
+export function decodeZipName(bytes: Uint8Array): string {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
@@ -65,7 +65,7 @@ function decodeZipName(bytes: Uint8Array): string {
  * 从一组路径里挑出代表插件的 metadata.json：
  * 排除「源码 / source / src」目录，再取层级最浅的一个。
  */
-function pickMetadata(paths: string[]): string | null {
+export function pickMetadata(paths: string[]): string | null {
   const cands = paths.filter(p => {
     const lp = p.toLowerCase();
     return lp.endsWith('/metadata.json') || lp === 'metadata.json';
@@ -77,17 +77,32 @@ function pickMetadata(paths: string[]): string | null {
 }
 
 /**
+ * 安装目录名只保留字母/数字/汉字/点/横线/下划线。
+ * metadata.json 来自插件作者（也可能来自市场下载的 ZIP），裸拼进 shell 命令
+ * 就能注入 `a";reboot;#`；名字是 `..` 还会把 targetDir 抬到母目录。
+ */
+export function sanitizePluginName(raw: string): string {
+  const name = String(raw || '')
+    .replace(/[^\p{L}\p{N}._-]+/gu, '_')
+    .replace(/^[._]+/, '')
+    .replace(/\.{2,}/g, '.');
+  if (!name || name === '.' || name === '..') return '';
+  return name;
+}
+
+/**
  * 解析安装文件夹名，优先级：
  * 1. metadata.icon 里的 plugins/<NAME>/ —— 插件自身代码引用的名字，最权威
  * 2. metadata.json 所在目录的 basename —— 分发者意图
  * 3. metadata.id / name 兜底
  */
-function resolveName(meta: PluginMeta, rootDir: string): string {
+export function resolveName(meta: PluginMeta, rootDir: string): string {
   const iconMatch = String(meta.icon || '').match(/plugins\/([^/]+)\//);
-  if (iconMatch) return iconMatch[1];
-  const base = basename(rootDir);
+  const iconName = iconMatch ? sanitizePluginName(iconMatch[1]) : '';
+  if (iconName) return iconName;
+  const base = sanitizePluginName(basename(rootDir));
   if (base) return base;
-  return String(meta.id || meta.name || 'plugin').replace(/[^\w.\-]+/g, '_');
+  return sanitizePluginName(String(meta.id || meta.name || '')) || 'plugin';
 }
 
 function findIcon(files: PluginEntry[], meta: PluginMeta): PluginEntry | undefined {
@@ -173,14 +188,16 @@ export async function parsePluginFromFiles(fileList: File[]): Promise<PluginPack
 // ── 查询设备上已安装版本 ──
 
 export async function getInstalledPlugin(conn: DeviceConnection, name: string): Promise<PluginMeta | null> {
-  const metaPath = PLUGINS_DIR + '/' + name + '/metadata.json';
+  // name 来自设备目录列表，但仍要挡掉 `..`/绝对路径；拼 shell 命令时再单引号转义，
+  // 这样目录名里带引号或 `$(...)` 也不会变成命令注入。
+  const metaPath = safeJoin(PLUGINS_DIR, name) + '/metadata.json';
   try {
     let text: string;
     // noShell 连接（SSH）的 exec 通道不可靠，cat 读不到内容 —— 改走 SFTP readFile
     if (conn.noShell && conn.readFile) {
       text = new TextDecoder('utf-8').decode(await conn.readFile(metaPath));
     } else {
-      text = await conn.shellCommand('cat "' + metaPath + '" 2>/dev/null');
+      text = await conn.shellCommand('cat ' + shQuote(metaPath) + ' 2>/dev/null');
     }
     const t = text.trim();
     if (!t || t[0] !== '{') return null;
@@ -190,7 +207,26 @@ export async function getInstalledPlugin(conn: DeviceConnection, name: string): 
   }
 }
 
+/** POSIX 单引号转义：把任意字符串安全地作为单个参数拼进 shell 命令 */
+function shQuote(s: string): string {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
 // ── 安装（推送到设备） ──
+
+/**
+ * 把插件包内的相对路径拼到安装目录下，并拒绝绝对路径与 `..`（zip slip）。
+ * 插件包来自市场下载或用户自选，条目路径完全不可信：`../../system/x` 这类
+ * 路径若原样拼上去，就会以 root 写到插件目录之外。
+ */
+export function safeJoin(base: string, entryPath: string): string {
+  const raw = String(entryPath || '').replace(/\\/g, '/');
+  const parts = raw.split('/').filter((p) => p && p !== '.');
+  if (raw.startsWith('/') || parts.some((p) => p === '..')) {
+    throw new Error('插件包内含非法路径（疑似路径穿越）：' + entryPath);
+  }
+  return parts.length ? base + '/' + parts.join('/') : base;
+}
 
 export interface InstallProgress {
   done: number;
@@ -203,7 +239,7 @@ export async function installPlugin(
   pkg: PluginPackage,
   onProgress: (p: InstallProgress) => void,
 ): Promise<string> {
-  const targetDir = PLUGINS_DIR + '/' + pkg.name;
+  const targetDir = PLUGINS_DIR + '/' + (sanitizePluginName(pkg.name) || 'plugin');
 
   // noShell 连接（SSH）：device-side shell 不可靠，unzip 静默失败。
   // 改为完全走 SFTP —— 逐文件推送，目录用 SFTP mkdir 预建，不触碰 shell。
@@ -219,6 +255,7 @@ export async function installPlugin(
   const JSZipMod = (await import('jszip')).default;
   const zip = new JSZipMod();
   for (const f of pkg.files) {
+    safeJoin(targetDir, f.path); // 只做校验，非法路径直接抛
     const data = await f.getData();
     zip.file(f.path, data);
   }
@@ -231,10 +268,17 @@ export async function installPlugin(
   await conn.pushFile(zipData, zipPath);
   onProgress({ done: 0, total: 1, file: '解压中…' });
   const out = await conn.shellScript(
-    'cd "' + targetDir + '" && unzip -o "' + zipPath + '" && chmod -R 755 . && rm -f "' + zipPath + '"'
+    'cd "' + targetDir + '" && unzip -o "' + zipPath + '"; rc=$?; echo "__PM_UNZIP=$rc"; chmod -R 755 .; rm -f "' + zipPath + '"'
   );
-  if (/error|cannot|No such/i.test(out) && !/inflating|extracting/i.test(out)) {
-    throw new Error('解压失败: ' + (out.split('\n')[0] || '未知错误'));
+  // 判退出码，而不是判文本：`unzip -o` 正常也会打印 inflating:，
+  // 原来的文本判断会把「cannot create directory」和 inflating 一起吞掉。
+  const rc = /__PM_UNZIP=(\d+)/.exec(out);
+  const code = rc ? Number(rc[1]) : -1;
+  if (code !== 0) {
+    const bad = out.split('\n').find(l => /error|invalid|cannot|No such/i.test(l));
+    if (code >= 2 || code < 0 || bad) {
+      throw new Error('解压失败' + (code >= 0 ? `（unzip 退出码 ${code}）` : '') + ': ' + (bad || out.split('\n')[0] || '未知错误'));
+    }
   }
 
   onProgress({ done: pkg.files.length, total: pkg.files.length, file: '完成' });
@@ -251,7 +295,7 @@ async function installViaSftp(
   pkg: PluginPackage,
   onProgress: (p: InstallProgress) => void,
 ): Promise<string> {
-  const targetDir = PLUGINS_DIR + '/' + pkg.name;
+  const targetDir = PLUGINS_DIR + '/' + (sanitizePluginName(pkg.name) || 'plugin');
   const total = pkg.files.length;
 
   // 收集所有需要的目录（含根），去重后逐个 mkdir（递归，幂等）
@@ -259,7 +303,7 @@ async function installViaSftp(
   const dirs = new Set<string>([targetDir]);
   for (const f of pkg.files) {
     const d = dirname(f.path);
-    if (d) dirs.add(targetDir + '/' + d);
+    if (d) dirs.add(safeJoin(targetDir, d));
   }
   // 排序保证父目录先于子目录（父路径是子路径前缀，字典序在前）
   for (const d of [...dirs].sort()) {
@@ -270,7 +314,7 @@ async function installViaSftp(
   for (const f of pkg.files) {
     onProgress({ done, total, file: f.path });
     const data = await f.getData();
-    await conn.pushFile(data, targetDir + '/' + f.path);
+    await conn.pushFile(data, safeJoin(targetDir, f.path));
     done++;
   }
 

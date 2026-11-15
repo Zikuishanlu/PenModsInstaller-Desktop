@@ -4,6 +4,9 @@ import { joinPath } from '../utils';
 import { showToast } from '../components/Toast';
 import type { FileManagerAction } from '../state';
 
+/** USB 上传上限：一次读进内存，超过这个尺寸必然 OOM */
+const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
+
 export function useUpload(
   dispatch: React.Dispatch<FileManagerAction>,
   adb: AdbManager | null,
@@ -16,6 +19,11 @@ export function useUpload(
   // ── 推送单个文件 ──
   const pushFile = useCallback(async (file: File, remotePath: string) => {
     if (!adb) return;
+    // 整文件一次性读进内存（pushFile 收 Uint8Array），浏览器标签页几千 MB 会直接崩，
+    // 给个明确上限和提示，比静默卡死强。
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw new Error(`文件过大（${(file.size / 1048576).toFixed(0)}MB），当前上限 ${MAX_UPLOAD_BYTES / 1048576}MB`);
+    }
     const data = new Uint8Array(await file.arrayBuffer());
     await adb.pushFile(data, remotePath, (pct) => setUploadProgress(pct));
   }, [adb]);

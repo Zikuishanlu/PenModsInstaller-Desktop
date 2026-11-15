@@ -143,11 +143,15 @@ export async function installYoudaoExt(
   await adb.pushFile(zipData, tmpZip);
   onProgress({ done: Math.round(files.length * 0.3), total: files.length, file: '解压中…' });
 
+  // 按退出码判断解压结果：unzip 正常时也会输出 "inflating: ..."，而失败时的
+  // 报错文本各版本不一致，靠关键字猜必然会误判。
   const out = await adb.shellScript(
-    'cd / && unzip -o "' + tmpZip + '" 2>/dev/null && rm -f "' + tmpZip + '"'
+    'cd / && unzip -o "' + tmpZip + '"; echo "__PM_UNZIP=$?"; rm -f "' + tmpZip + '"'
   );
-  if (/error|cannot|No such/i.test(out) && !/inflating|extracting/i.test(out)) {
-    throw new Error('解压失败: ' + (out.split('\n')[0] || '未知错误'));
+  const unzipMatch = /__PM_UNZIP=(\d+)/.exec(out);
+  const unzipCode = unzipMatch ? Number(unzipMatch[1]) : -1;
+  if (unzipCode !== 0) {
+    throw new Error('解压失败（unzip 退出码 ' + unzipCode + '）: ' + (out.split('\n')[0] || '无输出'));
   }
   onProgress({ done: Math.round(files.length * 0.6), total: files.length, file: '解压完成，配置中…' });
 
@@ -241,7 +245,22 @@ export async function configureYoudaoExtEndpoint(adb: AdbManager): Promise<boole
     }
   }
 
+  // 合并而不是覆盖：设备上原有配置里还有插件自己用的其它字段，整体覆盖会丢配置。
+  let existing: Record<string, unknown> = {};
+  if (foundPath) {
+    try {
+      const raw = new TextDecoder('utf-8').decode(await adb.readFile(foundPath));
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        existing = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // 读不到或不是合法 JSON —— 按空对象处理，下面写进去的就是默认配置
+    }
+  }
+
   const configBytes = new TextEncoder().encode(JSON.stringify({
+    ...existing,
     api_endpoint: AI_ENDPOINT, endpoint: AI_ENDPOINT,
     url: AI_ENDPOINT, server_addr: '127.0.0.2', api_port: 9987,
   }, null, 2));
