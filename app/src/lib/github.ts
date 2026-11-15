@@ -53,8 +53,8 @@ export async function ghGet<T>(path: string): Promise<T> {
   if (!resp.ok) {
     let detail = '';
     try {
-      const body = await resp.json() as { message?: string };
-      detail = body.message || '';
+      const body = await resp.json() as { message?: string; error?: string };
+      detail = body.message || body.error || '';
     } catch { /* 非 JSON */ }
     if (resp.status === 403 && /rate limit/i.test(detail)) {
       throw new GhError(403, 'GitHub API 触发限流，请到「设置」里填入 GitHub Token 后重试');

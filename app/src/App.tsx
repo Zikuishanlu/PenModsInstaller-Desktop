@@ -8,10 +8,12 @@ import { Shell } from './pages/Shell';
 import { EnableSSH } from './pages/EnableSSH';
 import { PluginsHub, AppsHub } from './pages/hubs';
 import { OtaPage } from './pages/OtaPage';
+import { Settings } from './pages/Settings';
 import { connectSSHProxy, disconnectSSH, setOnDisconnect } from './lib/ssh';
 import { getInstallFiles, getInstallFilesFromZip, type InstallFile } from './lib/files';
 import { IconPackage, IconUsb, IconZap, IconCheck,
-  IconRefresh, IconUpload, IconTerminal, IconX, IconFolder, IconShield, type IconProps
+  IconRefresh, IconUpload, IconTerminal, IconX, IconFolder, IconShield,
+  IconSettings, type IconProps
 } from './components/icons';
 import { DisclaimerModal } from './components/DisclaimerModal';
 import { BRAND } from './lib/branding';
@@ -48,7 +50,7 @@ class FileManagerErrorBoundary extends Component<
 type Step = 'idle' | 'installing' | 'done' | 'error';
 
 /** 工具标签 */
-type ToolTab = 'penmods' | 'files' | 'plugins' | 'ssh' | 'enable-ssh' | 'apps' | 'ota';
+type ToolTab = 'penmods' | 'files' | 'plugins' | 'ssh' | 'enable-ssh' | 'apps' | 'ota' | 'settings';
 
 interface NavTab {
   id: ToolTab;
@@ -69,6 +71,7 @@ const TABS_TOOLS: NavTab[] = [
   { id: 'enable-ssh', label: '开启 SSH', icon: IconShield },
   { id: 'apps', label: '安装包', icon: IconUpload },
   { id: 'ota', label: 'OTA 更新', icon: IconRefresh },
+  { id: 'settings', label: '设置', icon: IconSettings },
 ];
 
 const ALL_TABS: NavTab[] = [...TABS_MAIN, ...TABS_TOOLS];
@@ -918,6 +921,16 @@ function App() {
           />
         )}
         */}
+        {activeTab === 'settings' && (
+          <Settings
+            connMode={connMode}
+            onConnModeChange={setConnMode}
+            sshHost={sshHost}
+            onSshHostChange={setSshHost}
+            sshPort={sshPort}
+            onSshPortChange={setSshPort}
+          />
+        )}
         {activeTab === 'files' && (
           <div className="space-y-4">
             <FileManagerErrorBoundary>

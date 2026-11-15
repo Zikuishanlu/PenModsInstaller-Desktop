@@ -121,7 +121,9 @@ async function handleGh(req, res, url) {
     });
     res.end(text);
   } catch (e) {
-    sendJson(res, 502, { error: 'github request failed: ' + (e && e.message) });
+    // 把底层原因（TLS 证书、DNS、连接被拒）带出来，否则界面上只显示 "fetch failed"
+    const cause = e && e.cause && e.cause.code ? ' (' + e.cause.code + ')' : '';
+    sendJson(res, 502, { error: 'github request failed: ' + (e && e.message) + cause });
   }
 }
 
