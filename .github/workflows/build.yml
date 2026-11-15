@@ -36,9 +36,10 @@ jobs:
         working-directory: app
         run: npm run smoke
 
+      # --publish never：发布交给下面的 action，避免 electron-builder 抢先建出一个没有说明的 Release
       - name: Build exe
         working-directory: app
-        run: npx electron-builder --win
+        run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,13 +51,23 @@ jobs:
             app/release/*.exe
           if-no-files-found: error
 
-      - name: Attach to release
+      - name: Prepare release notes
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: PenMods 安装器 ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            app/release/*.exe
-            app/release/*.yml
-            app/release/*.blockmap
+        run: node tools/release-notes.mjs ${{ github.ref_name }}
+
+      # 用 gh 而不是 action-gh-release：Release 已存在时 gh release edit 一定会覆盖说明，
+      # 而 action-gh-release 遇到已有 Release 时是否更新 body 取决于内部逻辑，实测会留空。
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "PenMods 安装器 $TAG" --notes-file RELEASE_NOTES.md
+          else
+            gh release create "$TAG" --title "PenMods 安装器 $TAG" --notes-file RELEASE_NOTES.md
+          fi
+          gh release upload "$TAG" app/release/*.exe app/release/*.yml app/release/*.blockmap --clobber
