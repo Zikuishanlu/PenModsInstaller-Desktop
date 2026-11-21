@@ -36,7 +36,7 @@
 | 插件市场（在线浏览 + 一键安装插件） | 插件安装 → **插件市场** | 你的 GitHub 仓库（默认 `skdkzzx`，可改） |
 | 安装包市场（在线浏览 + 一键安装应用包） | 安装包 → **安装包市场** | 同上：仓库的 Release 附件或 `app.json` |
 | PenMods 运行时 OTA 更新 | 侧边栏 → **OTA 更新** | `Lyrecoul/penmods-ota` 的 `update_*.zip` |
-| 音乐：本地选歌 / 在线搜歌 / 分享链接导入歌单 / 我的喜欢，推到笔上 | 侧边栏 → **音乐** | 你自己填的音源（见「音乐模块」一节） |
+| 音乐：本地选歌 / 多平台在线搜歌 / 分享链接导入歌单 / 我的喜欢，推到笔上 | 侧边栏 → **音乐** | 你自己填的音源（见「音乐模块」一节） |
 | 设置：GitHub Token、连接方式、音源、清缓存、检查更新 | 侧边栏 → **设置** | 本机 localStorage + GitHub Release |
 
 
@@ -50,7 +50,7 @@
 
 | 设置（含检查更新） | 音乐 · 本地推送 | 音乐 · 在线搜歌 |
 | --- | --- | --- |
-| ![设置](docs/screenshots/settings.png) | ![音乐](docs/screenshots/music-local.png) | ![在线搜歌](docs/screenshots/music-online.png) |
+| ![设置](docs/screenshots/settings.png) | ![音乐](docs/screenshots/music-local.png) | ![在线搜歌](docs/screenshots/music-platforms.png) |
 
 | 音乐 · 歌单分享链接导入 | 音乐 · 我的喜欢 |
 | --- | --- |
@@ -227,27 +227,30 @@ OTA 源仓库可以在页面里改，也支持贴任意 zip 直链。
 侧边栏「音乐」有四个页签，全部围绕「把歌放到笔上」：
 
 - **本地音乐**：选文件夹或选文件，勾选后推送（默认目录 `/userdisk/Music`，可在设置里改）
-- **在线搜歌**：关键词搜索 → 试听 / 下载到笔
-- **歌单导入**：粘「分享歌单」的整段文字（支持网易云、QQ 音乐、酷狗、酷我、咪咕，也认其它平台的链接），
-  认出平台与歌单 id 后交给音源解析成歌曲列表，再批量下载到笔；认不出的链接还能退回「手动输入」逐行粘贴
+- **在线搜歌**：顶部选平台（**全部平台** / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕）→ 搜索 → 试听 / 下载到笔；
+  「全部平台」会把配好音源的平台都问一遍，合并去重后按平台标注来源，某个平台挂了不影响其它平台出结果
+- **歌单导入**：只认「分享歌单」的链接，粘整段分享文字即可（支持网易云、QQ 音乐、酷狗、酷我、咪咕，也认其它平台的链接），
+  认出平台与歌单 id 后交给对应平台的音源解析成歌曲列表，再批量下载到笔
 - **我的喜欢**：搜索或歌单里点心形收藏，存本机（最多 500 首），可一键全部推到笔上
+- 右上角可以选**音质**（128k / 320k / flac / flac24bit），实际给到哪一档由音源决定
 
-播放来源**不内置任何第三方接口**（那属于灰色地带），需要你在 **设置 → 音乐** 里填一个音源根地址，
-自己搭或找现成的都行。接口是三个 GET：
+播放来源**不内置任何第三方接口**（那属于灰色地带），需要你在 **设置 → 音乐** 里填音源地址：
+每个平台可以填各自的地址，也可以只填一个「兜底音源」让所有平台共用（旧版本的单一音源地址会自动当作兜底）。
+接口是三个 GET：
 
 ```text
-GET {base}/search?keyword=晴天&limit=20
+GET {base}/search?keyword=晴天&limit=30&platform=netease
 → { "songs": [{ "id": "1", "name": "晴天", "singer": "周杰伦", "album": "叶惠美", "duration": 269 }] }
 
-GET {base}/url?id=1
-→ { "url": "https://example.com/x.mp3" }
+GET {base}/url?id=1&platform=netease&quality=320k
+→ { "url": "https://example.com/x.mp3" }        # quality: 128k / 320k / flac / flac24bit
 
 GET {base}/playlist?platform=netease&id=3778678
-→ { "songs": [ ... 同上结构 ... ] }        # platform: netease / qq / kugou / kuwo / migu / other
+→ { "songs": [ ... 同上结构 ... ] }              # platform: netease / qq / kugou / kuwo / migu / other
 ```
 
 歌单短链（如 `163cn.tv/...`）没有数字 id 时只带 `url=` 交给音源解析；所以音源要支持哪种平台，
-取决于你自己那份音源实现。
+取决于你自己那份音源实现。`platform` 参数只是告诉音源「这歌来自哪个平台」，一个音源服务内部如何分发由它自己决定。
 
 搜索结果里直接带 `url` 的可以省掉第二次请求。字段名兼容 `songs / data / list / items`、
 `name|songname|title`、`singer|artist|author`、`duration|interval` 这几种常见写法。

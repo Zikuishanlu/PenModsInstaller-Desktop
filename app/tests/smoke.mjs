@@ -184,13 +184,72 @@ await attempt('音乐：扩展名只认音频后缀', () => {
   return true;
 });
 
-await attempt('音乐：歌单文本解析', () => {
-  const list = musicLib.parsePlaylistText('1. 晴天 - 周杰伦\n\n海阔天空 – Beyond\n起风了\n  * 稻香 _ 周杰伦\n');
-  if (list.length !== 4) return '条数=' + list.length + ' ' + JSON.stringify(list);
-  if (list[0].name !== '晴天' || list[0].singer !== '周杰伦') return '首条=' + JSON.stringify(list[0]);
-  if (list[1].singer !== 'Beyond') return '破折号未识别';
-  if (list[2].name !== '起风了' || list[2].singer !== '') return '单曲名解析错';
-  if (list[3].name !== '稻香') return '下划线未识别: ' + list[3].name;
+await attempt('音乐：多平台音源选择（自身优先、兜底其次）', () => {
+  const settings = {
+    sources: { netease: 'https://ne.example.com/', qq: ' https://qq.example.com ' },
+    fallback: ' https://fallback.example.com/ ',
+    deviceDir: '/userdisk/Music',
+    quality: '320k',
+  };
+  if (musicLib.sourceBaseFor(settings, 'netease') !== 'https://ne.example.com') return '网易云自身音源错';
+  if (musicLib.sourceBaseFor(settings, 'qq') !== 'https://qq.example.com') return 'QQ 自身音源错（应去空格）';
+  if (musicLib.sourceBaseFor(settings, 'kugou') !== 'https://fallback.example.com') return '未配平台应回落兜底';
+  const got = musicLib.configuredPlatforms(settings);
+  if (got.join(',') !== 'netease,qq,kugou,kuwo,migu') return '配了兜底后所有平台都算已配: ' + got.join(',');
+  const onlyNe = musicLib.configuredPlatforms({ ...settings, fallback: '' });
+  if (onlyNe.join(',') !== 'netease,qq') return '只有兜底为空时才只列自身: ' + onlyNe.join(',');
+  if (musicLib.hasAnySource({ sources: {}, fallback: '', deviceDir: '', quality: '320k' })) return '全空应返回 false';
+  if (!musicLib.hasAnySource({ sources: {}, fallback: 'https://a', deviceDir: '', quality: '320k' })) return '只有兜底也算有音源';
+  return true;
+});
+
+await attempt('音乐：聚合结果合并去重且标出平台', () => {
+  const ne = musicLib.parseSearchResponse({ songs: [{ id: '1', name: '晴天', singer: '周杰伦' }] }, 'netease');
+  const qq = musicLib.parseSearchResponse({ data: [{ id: '9', name: '晴天', singer: '周杰伦' }, { id: '8', name: '稻香', singer: '周杰伦' }] }, 'qq');
+  if (ne[0].platform !== 'netease') return '平台标记失败';
+  if (qq.length !== 2) return 'QQ 解析条数=' + qq.length;
+  const merged = musicLib.dedupeSongs([...ne, ...qq]);
+  if (merged.length !== 2) return '去重后应剩 2 首，实际 ' + merged.length;
+  if (merged[0].platform !== 'netease') return '去重应保留先来的平台';
+  if (musicLib.dedupeSongs([]).length !== 0) return '空数组应返回空';
+  return true;
+});
+
+await attempt('音乐：搜索/取链接带上平台与音质', () => {
+  const search = musicLib.buildSearchUrl('https://a.com/', '晴天', 20, 'kugou');
+  if (search !== 'https://a.com/search?keyword=' + encodeURIComponent('晴天') + '&limit=20&platform=kugou') return '搜索地址=' + search;
+  const noPlatform = musicLib.buildSearchUrl('https://a.com', 'x');
+  if (noPlatform.includes('platform=')) return '不传平台时不该出现 platform';
+  const url = musicLib.buildSongUrl('https://a.com', '42', 'qq', 'flac');
+  if (url !== 'https://a.com/url?id=42&platform=qq&quality=flac') return '取链接地址=' + url;
+  const noQuality = musicLib.buildSongUrl('https://a.com', '42');
+  if (noQuality !== 'https://a.com/url?id=42') return '不传音质时不该出现 quality: ' + noQuality;
+  return true;
+});
+
+await attempt('音乐：没配平台的音源时给出可读错误', async () => {
+  const empty = { sources: {}, fallback: '', deviceDir: '/userdisk/Music', quality: '320k' };
+  let msg = '';
+  try {
+    await musicLib.searchPlatform(empty, '晴天', 'netease');
+  } catch (e) {
+    msg = e.message;
+  }
+  if (!msg.includes('网易云音乐')) return '搜索错误未提平台名: ' + msg;
+  let plMsg = '';
+  try {
+    await musicLib.importPlaylist({ ...empty, sources: { qq: 'https://q' } }, 'https://music.163.com/playlist?id=1');
+  } catch (e) {
+    plMsg = e.message;
+  }
+  if (!plMsg.includes('网易云音乐')) return '歌单错误未提平台名: ' + plMsg;
+  let noLink = '';
+  try {
+    await musicLib.importPlaylist({ ...empty, fallback: 'https://f' }, '没有链接的一段话');
+  } catch (e) {
+    noLink = e.message;
+  }
+  if (!noLink.includes('没认出歌单链接')) return '无链接的提示不对: ' + noLink;
   return true;
 });
 

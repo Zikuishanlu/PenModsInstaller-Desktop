@@ -928,6 +928,7 @@ function App() {
             conn={deviceConn}
             connected={deviceStatus === 'connected'}
             onLog={(msg) => setLog(prev => [...prev, msg])}
+            onOpenSettings={() => setActiveTab('settings')}
           />
         )}
         {activeTab === 'settings' && (
