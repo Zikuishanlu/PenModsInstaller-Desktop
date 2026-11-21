@@ -360,10 +360,12 @@ export function Settings(props: SettingsProps) {
             />
           </div>
           <p className="text-[10px] text-[#94a3b8] leading-relaxed">
-            约定两个接口：<code className="bg-[#f1f5f9] px-1 rounded">GET /search?keyword=&amp;limit=</code> 返回
+            约定三个接口：<code className="bg-[#f1f5f9] px-1 rounded">GET /search?keyword=&amp;limit=</code> 返回
             {' '}<code className="bg-[#f1f5f9] px-1 rounded">{'{ songs: [{ id, name, singer, album, duration }] }'}</code>；
             {' '}<code className="bg-[#f1f5f9] px-1 rounded">GET /url?id=</code> 返回
-            {' '}<code className="bg-[#f1f5f9] px-1 rounded">{'{ url }'}</code>。
+            {' '}<code className="bg-[#f1f5f9] px-1 rounded">{'{ url }'}</code>；
+            {' '}<code className="bg-[#f1f5f9] px-1 rounded">GET /playlist?platform=&amp;id=&amp;url=</code> 返回同结构的歌曲列表
+            （解析「分享歌单」链接用，platform 为 netease / qq / kugou / kuwo / migu / other，短链只给 url）。
             返回里自带 <code className="bg-[#f1f5f9] px-1 rounded">url</code> 的可以直接给。
           </p>
 

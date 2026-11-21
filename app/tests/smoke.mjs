@@ -194,6 +194,59 @@ await attempt('音乐：歌单文本解析', () => {
   return true;
 });
 
+await attempt('音乐：分享链接认平台与歌单 id', () => {
+  const cases = [
+    ['分享歌单: 我喜欢的音乐 https://music.163.com/playlist?id=3778678', 'netease', '3778678'],
+    ['https://music.163.com/#/playlist?id=491533', 'netease', '491533'],
+    ['https://y.qq.com/n/ryqq/playlist/8676288', 'qq', '8676288'],
+    ['https://i.y.qq.com/n2/m/share/details/taoge.html?disstid=7291553918', 'qq', '7291553918'],
+    ['https://www.kugou.com/yy/special/single/1061309.html', 'kugou', '1061309'],
+    ['https://www.kuwo.cn/playlist_detail/2809007605', 'kuwo', '2809007605'],
+    ['https://music.migu.cn/v3/music/playlist/1603312681', 'migu', '1603312681'],
+    ['看看这个 https://music.example.com/list/1234567 挺好', 'other', '1234567'],
+  ];
+  for (const [text, platform, id] of cases) {
+    const r = musicLib.parseShareLink(text);
+    if (!r) return '没认出：' + text;
+    if (r.platform !== platform) return `平台 ${r.platform} != ${platform} ← ${text}`;
+    if (r.id !== id) return `id ${r.id} != ${id} ← ${text}`;
+  }
+  if (musicLib.parseShareLink('没有链接的一段话') !== null) return '无链接应返回 null';
+  if (musicLib.parseShareLink('') !== null) return '空文本应返回 null';
+  const short = musicLib.parseShareLink('https://163cn.tv/abc123');
+  if (!short || short.platform !== 'netease' || short.id !== '') return '短链应无 id 但平台为 netease';
+  const titled = musicLib.parseShareLink('分享歌单: 深夜电台 https://music.163.com/playlist?id=1');
+  if (!titled.title.includes('深夜电台')) return '标题=' + JSON.stringify(titled.title);
+  return true;
+});
+
+await attempt('音乐：歌单接口地址拼接', () => {
+  const u = musicLib.buildPlaylistUrl('https://a.com/api/', { platform: 'qq', id: '123', url: 'https://y.qq.com/x?a=1&b=2' });
+  if (!u.startsWith('https://a.com/api/playlist?')) return '基础地址=' + u;
+  if (!u.includes('platform=qq')) return '缺 platform';
+  if (!u.includes('id=123')) return '缺 id';
+  if (!u.includes('url=' + encodeURIComponent('https://y.qq.com/x?a=1&b=2'))) return 'url 未编码: ' + u;
+  const noId = musicLib.buildPlaylistUrl('https://a.com', { platform: 'netease', id: '', url: 'https://163cn.tv/x' });
+  if (noId.includes('id=')) return '空 id 不该出现: ' + noId;
+  return true;
+});
+
+await attempt('音乐：喜欢列表切换与去重', () => {
+  const a = { id: '1', name: '晴天', singer: '周杰伦', album: '', duration: 0 };
+  const b = { id: '2', name: '起风了', singer: '', album: '', duration: 0 };
+  let list = [];
+  if (musicLib.isFavorite(list, a)) return '空列表不该含';
+  list = musicLib.toggleFavorite(list, a);
+  if (!musicLib.isFavorite(list, a)) return '加入失败';
+  list = musicLib.toggleFavorite(list, b);
+  if (list.length !== 2) return '长度=' + list.length;
+  list = musicLib.toggleFavorite(list, { ...a, id: 'other-id' });
+  if (list.length !== 1 || list[0].name !== '起风了') return '按名字+歌手去重失败: ' + JSON.stringify(list.map((s) => s.name));
+  if (musicLib.favoriteKey({ name: ' A ', singer: 'B' }) !== musicLib.favoriteKey({ name: 'a', singer: 'b' })) return 'key 未忽略大小写/空格';
+  if (musicLib.loadFavorites().length !== 0) return '无 localStorage 时应返回空';
+  return true;
+});
+
 await attempt('音乐：设备路径与目录归一', () => {
   if (musicLib.normalizeBase(' https://a.com/api/ ') !== 'https://a.com/api') return '归一失败';
   if (musicLib.joinRemote('/userdisk/Music/', 'a.mp3') !== '/userdisk/Music/a.mp3') return 'joinRemote 失败';

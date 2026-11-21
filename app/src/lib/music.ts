@@ -92,7 +92,7 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-const LIST_KEYS = ['songs', 'data', 'list', 'result', 'items'];
+const LIST_KEYS = ['songs', 'playlist', 'data', 'list', 'result', 'items'];
 
 /** 从音源返回的 JSON 里取歌曲数组，兼容几种常见字段名 */
 export function parseSearchResponse(json: unknown): Song[] {
@@ -214,6 +214,165 @@ export function parsePlaylistText(text: string): PlaylistEntry[] {
   return out;
 }
 
+// ── 歌单分享链接 ──
+
+export type Platform = 'netease' | 'qq' | 'kugou' | 'kuwo' | 'migu' | 'other';
+
+export interface ShareInfo {
+  platform: Platform;
+  /** 平台侧歌单 id；短链或识别不出来时为空 */
+  id: string;
+  /** 原始链接 */
+  url: string;
+  /** 分享文本里的标题，能取到就带上，方便在界面上确认 */
+  title: string;
+}
+
+const PLATFORM_LABEL: Record<Platform, string> = {
+  netease: '网易云音乐',
+  qq: 'QQ 音乐',
+  kugou: '酷狗音乐',
+  kuwo: '酷我音乐',
+  migu: '咪咕音乐',
+  other: '其它平台',
+};
+
+/** 平台名，界面上显示用 */
+export function platformLabel(p: Platform): string {
+  return PLATFORM_LABEL[p] || '其它平台';
+}
+
+function platformOfHost(host: string): Platform {
+  const h = host.toLowerCase();
+  if (h.endsWith('music.163.com') || h.endsWith('163cn.tv')) return 'netease';
+  // y.qq.com / c6.y.qq.com / i.y.qq.com 都归 QQ 音乐
+  if (h.endsWith('qq.com')) return 'qq';
+  if (h.endsWith('kugou.com')) return 'kugou';
+  if (h.endsWith('kuwo.cn')) return 'kuwo';
+  if (h.endsWith('migu.cn')) return 'migu';
+  return 'other';
+}
+
+const ID_PATTERNS: Record<Platform, RegExp[]> = {
+  netease: [/\/(?:playlist|discover\/toplist)\/(\d+)/, /[?&]id=(\d+)/],
+  qq: [/[?&]disstid=(\d+)/, /\/playlist\/(\d+)/, /\/playsquare\/(\d+)/, /\/taoge\/(\d+)/],
+  kugou: [/\/single\/(\d+)\.html/, /\/plist\/list\/(\d+)/, /\/special\/single\/(\d+)/],
+  kuwo: [/\/playlist_detail\/(\d+)/, /\/playlist\/(\d+)/, /[?&]id=(\d+)/],
+  migu: [/\/playlist\/(\d+)/, /[?&]id=(\d+)/],
+  other: [/[?&](?:id|playlistid|disstid)=(\d+)/, /\/(\d{5,})(?:[/?.]|$)/],
+};
+
+/**
+ * 从「分享歌单」的整段文字里认出平台和歌单 id。
+ *
+ * 各平台分享出来的都是夹在文案里的链接（如 `分享歌单: xxx https://music.163.com/playlist?id=123`），
+ * 所以先抓第一个链接，再按域名判断平台、按路径/参数取 id。
+ * 短链（163cn.tv / c6.y.qq.com）拿不到 id，就把整条链接交给音源去解析。
+ */
+export function parseShareLink(text: string): ShareInfo | null {
+  const src = (text || '').trim();
+  if (!src) return null;
+  const m = /https?:\/\/[^\s"'<>）)】]+/.exec(src);
+  if (!m) return null;
+  const rawUrl = m[0].replace(/[.,，。；;、]+$/, '');
+  // 网易云经常是 https://music.163.com/#/playlist?id=xxx 这种 hash 形式
+  const normalized = rawUrl.replace('/#/', '/');
+  let u: URL;
+  try {
+    u = new URL(normalized);
+  } catch {
+    return null;
+  }
+  const platform = platformOfHost(u.hostname);
+  const haystack = u.pathname + '?' + u.search;
+  let id = '';
+  for (const re of ID_PATTERNS[platform]) {
+    const hit = re.exec(haystack);
+    if (hit && hit[1]) {
+      id = hit[1];
+      break;
+    }
+  }
+  const title = src
+    .replace(m[0], ' ')
+    .replace(/分享歌单|分享歌曲|来自|歌单|@[\w-]+|[:：]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  return { platform, id, url: rawUrl, title };
+}
+
+/** 音源解析歌单。约定：`GET {base}/playlist?platform=&id=&url=` 返回和搜索一样的歌曲列表 */
+export function buildPlaylistUrl(base: string, info: Pick<ShareInfo, 'platform' | 'id' | 'url'>): string {
+  const b = normalizeBase(base);
+  const query = ['platform=' + info.platform];
+  if (info.id) query.push('id=' + encodeURIComponent(info.id));
+  if (info.url) query.push('url=' + encodeURIComponent(info.url));
+  return `${b}/playlist?${query.join('&')}`;
+}
+
+// ── 我喜欢的歌 ──
+
+export const LS_MUSIC_FAVORITES = 'music_favorites';
+
+/** 喜欢列表上限，防止 localStorage 无限长胖 */
+export const MAX_FAVORITES = 500;
+
+function isSongLike(v: unknown): v is Song {
+  if (!v || typeof v !== 'object') return false;
+  const s = v as Record<string, unknown>;
+  return typeof s.name === 'string' && s.name.trim().length > 0;
+}
+
+export function loadFavorites(): Song[] {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(LS_MUSIC_FAVORITES);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(isSongLike).slice(0, MAX_FAVORITES);
+  } catch {
+    return [];
+  }
+}
+
+export function saveFavorites(list: Song[]): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(LS_MUSIC_FAVORITES, JSON.stringify(list.slice(0, MAX_FAVORITES)));
+  } catch {
+    // 隐私模式 / 配额满，忽略即可：喜欢列表丢一次比让页面崩掉好
+  }
+}
+
+/** 同一首歌的判定：名字 + 歌手（id 各平台不通用，换音源后还能认出来） */
+export function favoriteKey(song: Pick<Song, 'name' | 'singer'>): string {
+  return `${song.name}`.trim().toLowerCase() + '__' + `${song.singer || ''}`.trim().toLowerCase();
+}
+
+export function isFavorite(list: Song[], song: Song): boolean {
+  const key = favoriteKey(song);
+  return list.some((s) => favoriteKey(s) === key);
+}
+
+/** 在列表里切换喜欢状态，返回新数组（已经存在就删掉） */
+export function toggleFavorite(list: Song[], song: Song): Song[] {
+  const key = favoriteKey(song);
+  if (list.some((s) => favoriteKey(s) === key)) {
+    return list.filter((s) => favoriteKey(s) !== key);
+  }
+  const next: Song = {
+    id: song.id,
+    name: song.name,
+    singer: song.singer || '',
+    album: song.album || '',
+    duration: song.duration || 0,
+    ...(song.url ? { url: song.url } : {}),
+  };
+  return [next, ...list].slice(0, MAX_FAVORITES);
+}
+
 // ── 格式化 ──
 
 export function formatDuration(sec: number): string {
@@ -258,9 +417,26 @@ export async function searchSongs(base: string, keyword: string): Promise<Song[]
   return parseSearchResponse(json);
 }
 
+export interface PlaylistImport {
+  info: ShareInfo;
+  songs: Song[];
+}
+
+/** 解析「分享歌单」文本 → 音源 → 歌曲列表 */
+export async function importPlaylist(base: string, text: string): Promise<PlaylistImport> {
+  if (!normalizeBase(base)) throw new Error('还没有配置音源地址，先去「设置 → 音乐」里填');
+  const info = parseShareLink(text);
+  if (!info) throw new Error('没认出歌单链接，把平台里「分享歌单」的整段文字粘进来试试');
+  const json = await getJson(buildPlaylistUrl(base, info));
+  const songs = parseSearchResponse(json);
+  if (!songs.length) {
+    throw new Error(`音源没有解析出 ${platformLabel(info.platform)} 的歌单，可能它还只支持搜索`);
+  }
+  return { info, songs };
+}
+
 /** 取一首歌的播放/下载地址 */
-export async function resolveSongUrl(base: string, song: Song): Promise<string> {
-  if (song.url) return song.url;
+export async function resolveSongUrl(base: string, song: Song): Promise<string> {  if (song.url) return song.url;
   const json = await getJson(buildSongUrl(base, song.id));
   const url = pickSongUrl(json);
   if (!url) throw new Error('音源没有返回可用的播放地址');
