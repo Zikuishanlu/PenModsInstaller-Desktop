@@ -1,4 +1,4 @@
-import { Component, useState, useCallback, useRef, useEffect, useMemo, type ComponentType } from 'react';
+import { Component, useState, useCallback, useRef, useEffect, useMemo, type ComponentType, type ReactNode } from 'react';
 import { AdbManager, type AdbProgressEvent, type DeviceStatus as DeviceStatusType } from './lib/adb';
 import { Installer } from './lib/installer';
 import { createSSHConnection } from './lib/device';
@@ -59,6 +59,25 @@ interface NavTab {
   icon: ComponentType<IconProps>;
 }
 
+/** 页签面板：首次进入才挂载，之后只切显隐 —— 切页不会打断正在跑的任务（下载 / 推送 / 安装 / 终端会话） */
+function KeptTab({ tab, active, mounted, children }: {
+  tab: ToolTab;
+  active: boolean;
+  mounted: Set<ToolTab>;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    // 重新显示时通知一次，终端之类靠 window resize 重新适配尺寸
+    if (active) window.dispatchEvent(new Event('resize'));
+  }, [active]);
+  if (!mounted.has(tab)) return null;
+  return (
+    <div className={active ? 'space-y-6' : 'hidden'} data-tab-panel={tab}>
+      {children}
+    </div>
+  );
+}
+
 /** 侧边栏 · 常用功能 */
 const TABS_MAIN: NavTab[] = [
   { id: 'penmods', label: 'PenMods 安装', icon: IconZap },
@@ -80,6 +99,12 @@ const ALL_TABS: NavTab[] = [...TABS_MAIN, ...TABS_TOOLS];
 
 function App() {
   const [activeTab, setActiveTab] = useState<ToolTab>('penmods');
+  // 打开过的页签：切走只是隐藏，组件不卸载，正在跑的任务不会断
+  const [mountedTabs, setMountedTabs] = useState<Set<ToolTab>>(() => new Set<ToolTab>(['penmods']));
+  const goTab = useCallback((id: ToolTab) => {
+    setMountedTabs(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+    setActiveTab(id);
+  }, []);
   // 状态
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatusType>('idle');
   const [deviceInfo, setDeviceInfo] = useState<{ model: string; serial: string } | null>(null);
@@ -275,7 +300,7 @@ function App() {
         adbRef.current = null;
         await a.disconnect().catch(() => {});
       }
-      setActiveTab('files');
+      goTab('files');
     }
   };
 
@@ -439,7 +464,7 @@ function App() {
     const TabIcon = tab.icon;
     const active = activeTab === tab.id;
     return (
-      <button key={tab.id} onClick={() => setActiveTab(tab.id)} title={tab.label}
+      <button key={tab.id} onClick={() => goTab(tab.id)} title={tab.label}
         className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
           active
             ? 'bg-[#eff6ff] text-[#1d4ed8] font-medium'
@@ -618,9 +643,9 @@ function App() {
       )}
         </header>
 
-        <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-8 space-y-6">
+        <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-8">
 
-        {activeTab === 'penmods' && (
+        <KeptTab tab="penmods" active={activeTab === 'penmods'} mounted={mountedTabs}>
         <>
         {/* PenMods 安装仅支持 USB */}
         {connMode === 'ssh' && (
@@ -871,8 +896,9 @@ function App() {
           </section>
         )}
 
-        </>)}
-        {activeTab === 'plugins' && (
+        </>
+        </KeptTab>
+        <KeptTab tab="plugins" active={activeTab === 'plugins'} mounted={mountedTabs}>
           <PluginsHub
             adb={adbRef.current}
             conn={deviceConn}
@@ -880,16 +906,16 @@ function App() {
             connectionType={connMode}
             onLog={(msg) => setLog(prev => [...prev, msg])}
           />
-        )}
-        {activeTab === 'ssh' && (
+        </KeptTab>
+        <KeptTab tab="ssh" active={activeTab === 'ssh'} mounted={mountedTabs}>
           <Shell
             adb={adbRef.current}
             connected={deviceStatus === 'connected'}
             connectionType={connMode}
             onLog={(msg) => setLog(prev => [...prev, msg])}
           />
-        )}
-        {activeTab === 'enable-ssh' && (
+        </KeptTab>
+        <KeptTab tab="enable-ssh" active={activeTab === 'enable-ssh'} mounted={mountedTabs}>
           <EnableSSH
             adb={adbRef.current}
             connected={deviceStatus === 'connected'}
@@ -897,8 +923,8 @@ function App() {
             onLog={(msg) => setLog(prev => [...prev, msg])}
             onConnectSSH={autoConnectSSH}
           />
-        )}
-        {activeTab === 'apps' && (
+        </KeptTab>
+        <KeptTab tab="apps" active={activeTab === 'apps'} mounted={mountedTabs}>
           <AppsHub
             adb={adbRef.current}
             conn={deviceConn}
@@ -906,14 +932,14 @@ function App() {
             connectionType={connMode}
             onLog={(msg) => setLog(prev => [...prev, msg])}
           />
-        )}
-        {activeTab === 'ota' && (
+        </KeptTab>
+        <KeptTab tab="ota" active={activeTab === 'ota'} mounted={mountedTabs}>
           <OtaPage
             conn={deviceConn}
             connected={deviceStatus === 'connected'}
             onLog={(msg) => setLog(prev => [...prev, msg])}
           />
-        )}
+        </KeptTab>
         {/* youdaoEXT 暂时隐藏
         {activeTab === 'youdaoxt' && (
           <YoudaoExt
@@ -923,15 +949,15 @@ function App() {
           />
         )}
         */}
-        {activeTab === 'music' && (
+        <KeptTab tab="music" active={activeTab === 'music'} mounted={mountedTabs}>
           <Music
             conn={deviceConn}
             connected={deviceStatus === 'connected'}
             onLog={(msg) => setLog(prev => [...prev, msg])}
-            onOpenSettings={() => setActiveTab('settings')}
+            onOpenSettings={() => goTab('settings')}
           />
-        )}
-        {activeTab === 'settings' && (
+        </KeptTab>
+        <KeptTab tab="settings" active={activeTab === 'settings'} mounted={mountedTabs}>
           <Settings
             connMode={connMode}
             onConnModeChange={setConnMode}
@@ -940,8 +966,8 @@ function App() {
             sshPort={sshPort}
             onSshPortChange={setSshPort}
           />
-        )}
-        {activeTab === 'files' && (
+        </KeptTab>
+        <KeptTab tab="files" active={activeTab === 'files'} mounted={mountedTabs}>
           <div className="space-y-4">
             <FileManagerErrorBoundary>
               <FileManager
@@ -974,7 +1000,7 @@ function App() {
               </div>
             )}
           </div>
-        )}
+        </KeptTab>
 
       </main>
 
