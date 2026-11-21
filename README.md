@@ -63,8 +63,8 @@
 
 | 文件 | 说明 |
 | --- | --- |
-| [PenMods-Installer-Portable-1.1.1.exe](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases/download/v1.1.1/PenMods-Installer-Portable-1.1.1.exe) | 免安装单文件，双击即用 |
-| [PenMods-Installer-1.1.1-x64.exe](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases/download/v1.1.1/PenMods-Installer-1.1.1-x64.exe) | 安装版，可选目录 + 桌面快捷方式 |
+| [PenMods-Installer-Portable-1.1.2.exe](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases/download/v1.1.2/PenMods-Installer-Portable-1.1.2.exe) | 免安装单文件，双击即用 |
+| [PenMods-Installer-1.1.2-x64.exe](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases/download/v1.1.2/PenMods-Installer-1.1.2-x64.exe) | 安装版，可选目录 + 桌面快捷方式 |
 
 全部版本在 [Releases](https://github.com/Zikuishanlu/PenModsInstaller-Desktop/releases) 页面。
 程序未做代码签名，Windows 可能提示「未知发布者」，选「仍要运行」即可。
@@ -130,8 +130,8 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `app/release/PenMods-Installer-Portable-1.1.1.exe` | ~110 MB | 免安装单文件，双击即用（解压到临时目录运行） |
-| `app/release/PenMods-Installer-1.1.1-x64.exe` | ~120 MB | NSIS 安装版，可选安装目录，建桌面/开始菜单快捷方式 |
+| `app/release/PenMods-Installer-Portable-1.1.2.exe` | ~110 MB | 免安装单文件，双击即用（解压到临时目录运行） |
+| `app/release/PenMods-Installer-1.1.2-x64.exe` | ~120 MB | NSIS 安装版，可选安装目录，建桌面/开始菜单快捷方式 |
 
 > 打包时 electron-builder 需要下载 Electron 二进制与 NSIS 工具链；`.npmrc` 已把
 > `electron_mirror` / `electron_builder_binaries_mirror` 指向 npmmirror 镜像。
@@ -146,7 +146,7 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 
 1. **别把 exe 放在项目目录里**。本机实测：放在工作区目录（`...\dsh\penmods\...`）下的 exe
    双击后进程秒退、窗口不出现；同样的文件复制到桌面就能正常跑。
-   把 `PenMods-Installer-Portable-1.1.1.exe` 放到桌面或 `D:\` 这类普通目录再双击。
+   把 `PenMods-Installer-Portable-1.1.2.exe` 放到桌面或 `D:\` 这类普通目录再双击。
 2. 看启动日志：`%TEMP%\penmods-installer-boot.log`。
    - 文件不存在 → 主进程还没跑到 JS 就退出了（基本就是路径/杀软拦截，换目录重试）。
    - 有 `app ready` 但没 `window created` → 本地服务或窗口创建失败，日志里会写原因。
@@ -315,7 +315,7 @@ git push -u origin main
 仓库带了一个 GitHub Actions 工作流 `.github/workflows/build.yml`：
 
 - 手动触发（Actions → build → Run workflow）会跑一遍类型检查 + 打包，产物在 Artifacts 里；
-- 打 tag（`git tag v1.1.0 && git push origin v1.1.0`）会自动把两个 exe 传到 Release。
+- 打 tag（`git tag v1.1.2 && git push origin v1.1.2`）会自动把两个 exe 传到 Release。
 - 普通 push / PR 也会跑类型检查、冒烟测试和打包，但只有打 tag 才会发 Release。
 
 这样换台机器、或者本机网络抽风时，也能拿到可用的 exe。
