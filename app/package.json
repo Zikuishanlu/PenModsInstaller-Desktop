@@ -1,7 +1,7 @@
 {
   "name": "penmods-installer-desktop",
   "productName": "PenMods Installer",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "private": true,
   "type": "module",
   "description": "PenMods 桌面安装器 — 有道词典笔 Mod 一键安装 / 插件市场 / 安装包市场 / OTA 更新",
