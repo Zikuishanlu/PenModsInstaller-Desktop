@@ -99,7 +99,7 @@ export interface GhRelease {
 }
 
 /** 列出用户仓库（最多 200 个，按最近推送排序） */
-/** 取单个仓库信息（用于内置推荐仓库，owner 可能和市场源不同） */
+/** 取单个仓库信息（用于插件市场的内置清单） */
 export async function getRepo(owner: string, repo: string): Promise<GhRepo> {
   return ghGet<GhRepo>(`/repos/${owner}/${repo}`);
 }

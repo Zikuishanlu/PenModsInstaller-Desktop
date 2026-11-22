@@ -31,7 +31,7 @@ export interface MarketPlugin {
 }
 
 /**
- * 内置推荐的插件仓库（owner/repo）。不管市场源是谁，这些都会一并扫描，
+ * 插件市场的内容就是这些仓库（owner/repo），想加减插件改这个数组。
  * 所以来自不同作者的插件也能在同一个市场里看到。
  */
 export const FEATURED_PLUGINS = [
