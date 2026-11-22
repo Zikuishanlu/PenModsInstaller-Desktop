@@ -119,6 +119,11 @@ export async function listRepos(owner: string): Promise<GhRepo[]> {
   return out.filter(r => !r.archived);
 }
 
+/** 取单个仓库信息（用于内置推荐仓库，owner 可能和市场源不同） */
+export async function getRepo(owner: string, repo: string): Promise<GhRepo> {
+  return ghGet<GhRepo>(`/repos/${owner}/${repo}`);
+}
+
 /** 列出仓库某个目录 */
 export async function listContents(owner: string, repo: string, path = ''): Promise<GhContent[]> {
   const p = `/repos/${owner}/${repo}/contents/${path.replace(/^\/+/, '')}`;

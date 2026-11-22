@@ -155,7 +155,7 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 
 ## 插件市场怎么认插件
 
-扫描指定账号下的仓库，命中以下任意一处即认为是一个插件：
+扫描指定账号下的仓库，命中以下任意一处即认为是一个插件（另外还会固定扫描下面这几个推荐仓库）：
 
 - 仓库根目录的 `metadata.json`
 - 一级子目录 `plugin/`、`plugins/`、`src/`、`app/`、`source/` 里的 `metadata.json`（跳过「源码」目录）
@@ -177,6 +177,18 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 
 安装目录名依次取：`icon` 里的 `plugins/<名字>/` → `id` 最后一段 → 仓库名。
 所以**想控制装到哪个目录，就把 `icon` 写成 `.../plugins/<你要的目录名>/icon.png`**。
+
+### 内置推荐仓库
+
+市场除了扫描「默认市场源」那个账号的全部仓库，还固定扫描这几个插件仓库（来自不同作者，改市场源也不影响）：
+
+| 仓库 | 插件 |
+| --- | --- |
+| [skdkzzx/youdao-pen-reader](https://github.com/skdkzzx/youdao-pen-reader) | 电子书阅读器 |
+| [Haikure/BiliPocket](https://github.com/Haikure/BiliPocket) | BiliPocket（B 站客户端） |
+| [fjw2664658647-source/penmods-qqmusic](https://github.com/fjw2664658647-source/penmods-qqmusic) | QQ 音乐 |
+
+清单在 `app/src/lib/market.ts` 的 `FEATURED_PLUGINS` 里，想加减直接改这个数组。
 
 ## OTA 更新
 

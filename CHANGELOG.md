@@ -8,6 +8,19 @@
   本地推送 / 多平台搜歌 / 歌单导入 / 我的喜欢都不再提供；本地服务顺带移除只给它用的 `/api/proxy` 转发端点
   （少一个能代理任意 http 地址的入口）。`music_*` 这几个 localStorage key 不再写入。
 
+新增
+
+- **插件市场内置推荐仓库**：除了扫「默认市场源」那个账号，还固定扫描
+  `skdkzzx/youdao-pen-reader`（电子书阅读器）、`Haikure/BiliPocket`（笔里哔哩）、
+  `fjw2664658647-source/penmods-qqmusic`（笔上QQ音乐），三个来自不同作者的插件不必改市场源就能看到，
+  清单在 `app/src/lib/market.ts` 的 `FEATURED_PLUGINS`。
+
+- **删掉「安装包」模块**（侧边栏「安装包」入口、上传安装页、安装包市场一起）：
+  连带删除 `src/pages/AppStore`、`src/pages/AppsMarket`、`src/lib/app-store.ts`，
+  以及 `market.ts` 里的 `discoverApps`/`AppManifest` 和 `market-install.ts` 的 `installMarketApp`。
+  以后 GitHub 仓库的 Release 附件和 `app.json` 清单都不会再被识别成安装包；
+  装东西请走「插件安装」或「OTA 更新」。设置里清理本地数据也不再清 `appsHubTab`。
+
 ## v1.1.2 (2026-11-21)
 
 修复

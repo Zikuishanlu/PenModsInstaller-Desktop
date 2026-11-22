@@ -6,7 +6,7 @@
  *   2. 一级子目录（plugin/ plugins/ src/ app/）里的 metadata.json
  */
 import {
-  listRepos, listContents, readRepoText, rawUrl, repoZipUrl,
+  listRepos, getRepo, listContents, readRepoText, rawUrl, repoZipUrl,
   type GhRepo, type GhContent,
 } from './github';
 import type { PluginMeta } from './plugin-install';
@@ -28,6 +28,16 @@ export interface MarketPlugin {
   metaDir: string;
   meta: PluginMeta;
 }
+
+/**
+ * 内置推荐的插件仓库（owner/repo）。不管市场源是谁，这些都会一并扫描，
+ * 所以来自不同作者的插件也能在同一个市场里看到。
+ */
+export const FEATURED_PLUGINS = [
+  'skdkzzx/youdao-pen-reader',
+  'Haikure/BiliPocket',
+  'fjw2664658647-source/penmods-qqmusic',
+];
 
 const pluginCache = new Map<string, { at: number; data: MarketPlugin[] }>();
 const CACHE_TTL = 5 * 60 * 1000;
@@ -139,8 +149,22 @@ export async function discoverPlugins(
   const repos = await listRepos(owner);
   onProgress?.(`共 ${repos.length} 个仓库，正在识别插件…`);
   const found = await mapLimit(repos, 4, r => inspectPlugin(owner, r));
-  const data = found
+
+  // 内置推荐仓库：可能属于别的作者，单独取仓库信息后再探测
+  const featured = await mapLimit(FEATURED_PLUGINS, 3, async spec => {
+    const [o, name] = spec.split('/');
+    if (!o || !name) return null;
+    try {
+      return await inspectPlugin(o, await getRepo(o, name));
+    } catch {
+      return null;
+    }
+  });
+
+  const seen = new Set<string>();
+  const data = [...found, ...featured]
     .filter((x): x is MarketPlugin => !!x)
+    .filter(x => (seen.has(x.key) ? false : (seen.add(x.key), true)))
     .sort((a, b) => b.stars - a.stars || a.name.localeCompare(b.name));
   pluginCache.set(owner, { at: Date.now(), data });
   return data;
