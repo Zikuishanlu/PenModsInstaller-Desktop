@@ -30,9 +30,9 @@ GPL-3.0 给了你四件事：
 | [PenUniverse/PenMods](https://github.com/PenUniverse/PenMods) | GPL-3.0 | 设备端内核（`libPenMods.so`、`patch.sh`、`misc/*`）。本项目把这些文件原样分发给设备，**未修改** |
 | [skdkzzx/PenModsInstaller](https://github.com/skdkzzx/PenModsInstaller) | GPL-3.0 | 本项目的**直接上游**：前端页面、`src/lib/*` 的设备通信/安装逻辑、`public/files` 安装包都来自这里 |
 | [yume-chan/ya-webadb](https://github.com/yume-chan/ya-webadb) | MIT | `@yume-chan/adb`、`@yume-chan/adb-daemon-webusb`：浏览器里实现 ADB over WebUSB |
-| 本项目新增部分 | GPL-3.0 | Electron 主进程与本地服务、插件市场、安装包市场、OTA 更新页 |
+| 本项目新增部分 | GPL-3.0 | Electron 主进程与本地服务、插件市场、OTA 更新页、设置页与音乐模块 |
 
-> 简言之：**界面和安装逻辑来自网页版 PenModsInstaller，设备端来自 PenMods，本项目新增的是「桌面壳 + 三个市场」。**
+> 简言之：**界面和安装逻辑来自网页版 PenModsInstaller，设备端来自 PenMods，本项目新增的是「桌面壳 + 插件市场/OTA 页面」。**
 > 因此本项目必须继续以 GPL-3.0 分发。这一点没有商量余地——GPL 是传染性的（copyleft）。
 
 ---
@@ -45,10 +45,11 @@ GPL-3.0 给了你四件事：
    - 主进程内建静态文件服务 + SSH WebSocket 代理 + GitHub API/下载代理；
    - USB 设备权限放行（`setPermissionRequestHandler` / `setDevicePermissionHandler`）；
    - 固定监听端口 `47821`（占用时回退随机端口），避免 localStorage 因 origin 变化被清空。
-2. **新增三个功能页面**（`app/src/pages/`）：
+2. **新增功能页面**（`app/src/pages/`）：
    - `PluginMarket`：从 GitHub 仓库扫描 `metadata.json` 发现并安装插件；
-   - `AppsMarket`：从 GitHub Release 附件与仓库 `app.json` 清单发现并安装安装包；
-   - `OtaPage`：从 `Lyrecoul/penmods-ota` 拉取 `update_*.zip` 并推送到设备执行 `_do_update.sh`。
+   - `OtaPage`：从 `Lyrecoul/penmods-ota` 拉取 `update_*.zip` 并推送到设备执行 `_do_update.sh`；
+   - `Settings` / `Music`：桌面端设置与音乐推送（v1.1.x 新增）。
+   - 曾经的 `AppsMarket`（安装包市场）已在 v1.1.3 移除，见下条。
 3. **新增数据层**：`app/src/lib/{github,market,market-install,branding}.ts`
    （GitHub API 客户端、断点续传下载、市场发现逻辑、OTA 脚本生成、品牌常量）。
 4. **原文案与品牌**：页脚、标题、关于信息改为指向本项目；
@@ -56,10 +57,10 @@ GPL-3.0 给了你四件事：
 5. **移除**：上游的 Node 服务端 `server.mjs` / `proxy.mjs` / 部署脚本（由 Electron 主进程内的服务替代）；
    上游单元测试（`src/**/__tests__`）保留在源码中但未纳入构建。
 
-未修改的部分：`app/src/lib/{adb,device,ssh,installer,files,plugin-install,app-store,steps,youdaoxt,credential-store}.ts`
+未修改的部分：`app/src/lib/{adb,device,ssh,installer,files,plugin-install,steps,youdaoxt,credential-store}.ts`
 的设备通信与安装算法逻辑、各安装向导页面、`app/public/files/**` 的安装包内容。
 
-修改日期：2026-10（初版）。
+修改日期：2026-10（初版）、2026-11（移除安装包模块）。
 
 ---
 

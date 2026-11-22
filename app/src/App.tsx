@@ -6,7 +6,7 @@ import type { DeviceConnection } from './lib/device';
 import { FileManager } from './pages/FileManager';
 import { Shell } from './pages/Shell';
 import { EnableSSH } from './pages/EnableSSH';
-import { PluginsHub, AppsHub } from './pages/hubs';
+import { PluginsHub } from './pages/hubs';
 import { OtaPage } from './pages/OtaPage';
 import { Settings } from './pages/Settings';
 import { Music } from './pages/Music';
@@ -51,7 +51,7 @@ class FileManagerErrorBoundary extends Component<
 type Step = 'idle' | 'installing' | 'done' | 'error';
 
 /** 工具标签 */
-type ToolTab = 'penmods' | 'music' | 'files' | 'plugins' | 'ssh' | 'enable-ssh' | 'apps' | 'ota' | 'settings';
+type ToolTab = 'penmods' | 'music' | 'files' | 'plugins' | 'ssh' | 'enable-ssh' | 'ota' | 'settings';
 
 interface NavTab {
   id: ToolTab;
@@ -90,7 +90,6 @@ const TABS_MAIN: NavTab[] = [
 /** 侧边栏 · 工具 */
 const TABS_TOOLS: NavTab[] = [
   { id: 'enable-ssh', label: '开启 SSH', icon: IconShield },
-  { id: 'apps', label: '安装包', icon: IconUpload },
   { id: 'ota', label: 'OTA 更新', icon: IconRefresh },
   { id: 'settings', label: '设置', icon: IconSettings },
 ];
@@ -922,15 +921,6 @@ function App() {
             connectionType={connMode}
             onLog={(msg) => setLog(prev => [...prev, msg])}
             onConnectSSH={autoConnectSSH}
-          />
-        </KeptTab>
-        <KeptTab tab="apps" active={activeTab === 'apps'} mounted={mountedTabs}>
-          <AppsHub
-            adb={adbRef.current}
-            conn={deviceConn}
-            connected={deviceStatus === 'connected'}
-            connectionType={connMode}
-            onLog={(msg) => setLog(prev => [...prev, msg])}
           />
         </KeptTab>
         <KeptTab tab="ota" active={activeTab === 'ota'} mounted={mountedTabs}>

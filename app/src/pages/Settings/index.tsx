@@ -31,7 +31,6 @@ const LOCAL_KEYS = [
   'sshHost',
   'sshPort',
   'pluginsHubTab',
-  'appsHubTab',
   'music_source',
   'music_sources',
   'music_device_dir',

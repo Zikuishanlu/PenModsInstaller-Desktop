@@ -178,39 +178,15 @@ this.transport = await AdbDaemonTransport.authenticate({
 
 ---
 
-## 6. 安装包市场
+## 6. 通用安装包（已在 1.1.3 移除）
 
-`src/lib/app-store.ts` 定义了一种更通用的东西：
+上游网页版有一个更通用的「安装包」抽象（`AppPackage { id, name, description, sizeMB, files[], script, uninstallScript? }`），
+支持 `.zip` / `.tar.gz` / `.tgz` + 解压后跑 `install.sh`，桌面版一度把它做成了「安装包市场」
+（扫 GitHub Release 附件与 `app.json` 清单）。
 
-```ts
-AppPackage { id, name, description, sizeMB, files[], script, uninstallScript? }
-```
-
-- 支持 `.zip` / `.tar.gz` / `.tgz`；
-- 解压后如果找到 `install.sh` 就执行它；
-- 脚本末尾必须有 `__INSTALL_DONE__` 标记，否则判定失败（`MARKER` 常量）。
-
-桌面版的安装包市场（`src/lib/market.ts` 的 `discoverApps`）从两个来源收包：
-
-1. **GitHub Release 附件**：扫每个仓库最近 5 个 release，挑 `.zip/.tar.gz/.tgz`（>200MB 跳过）；
-2. **仓库根 `app.json` 清单**：
-
-```json
-{
-  "id": "my-app",
-  "name": "我的工具",
-  "version": "1.0.0",
-  "description": "……",
-  "author": "you",
-  "archive": "dist/my-app.zip",
-  "installScript": "install.sh",
-  "icon": "icon.png"
-}
-```
-
-安装时 `installMarketApp()`：下载 → 推到 `/userdisk/__market_pkg.zip` → 生成脚本
-`remount → cd /userdisk → unzip/tar → 有 install.sh 就 sh → 清理`。
-
+这条链路依赖设备端 `install.sh` 的约定，实际发布的包几乎都用不上，反而多出两个页面的维护成本，
+所以在 v1.1.3 整块删掉了（`src/lib/app-store.ts`、`src/pages/{AppStore,AppsMarket}`、`discoverApps`）。
+现在外部代码安装只保留两条：**插件市场**（`metadata.json`）和 **OTA 更新**（`update_*.zip`）。
 ---
 
 ## 7. OTA 更新（Lyrecoul/penmods-ota）
@@ -301,9 +277,8 @@ app/src/lib/ssh.ts              浏览器侧的 WS 消息客户端
 app/src/lib/installer.ts        PenMods 一次性安装命令链
 app/src/lib/files.ts            8 个安装文件的清单与来源
 app/src/lib/plugin-install.ts   插件解析与安装
-app/src/lib/app-store.ts        通用安装包（zip/tar.gz + install.sh）
 app/src/lib/github.ts           GitHub API 客户端 + 断点续传下载
-app/src/lib/market.ts           插件市场 / 安装包市场的发现逻辑
+app/src/lib/market.ts           插件市场的发现逻辑
 app/src/lib/market-install.ts   市场包与 OTA 包的落地脚本
 app/electron/main.cjs           主进程：窗口、USB 权限、单实例
 app/electron/server.cjs         本地 HTTP 服务 + SSH WS 代理 + GitHub 代理

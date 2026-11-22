@@ -56,7 +56,6 @@ const libPath = (name) => pathToFileURL(path.join(tmpLib, 'lib', name + '.ts')).
 const pi = await import(libPath('plugin-install'));
 const filesLib = await import(libPath('files'));
 const gh = await import(libPath('github'));
-const store = await import(libPath('app-store'));
 const stepsLib = await import(libPath('steps'));
 const updatesLib = await import(libPath('updates'));
 const musicLib = await import(libPath('music'));
@@ -138,13 +137,6 @@ await attempt('GitHub：token 头带上、JSON 正常解析', async () => {
   const data = await gh.ghGet('/repos/a/b');
   gh.setToken('');
   return data.full_name === 'a/b' && seen === 'tok-1' ? true : `data=${JSON.stringify(data)} token=${seen}`;
-});
-
-await attempt('自定义安装包脚本带 set -e 与完成标记', () => {
-  const pkg = store.buildCustomAppPackage({ fileName: 'MyApp-1.2.3.zip', data: new Uint8Array([1]), isTarGz: false, sizeMB: 1 });
-  if (!pkg.script.startsWith('set -e')) return '缺少 set -e';
-  if (!/echo "安装完成"/.test(pkg.script)) return '缺少完成标记';
-  return pkg.id === 'custom_MyApp-1.2.3' ? true : 'id=' + pkg.id;
 });
 
 await attempt('音乐：搜索响应兼容多种字段与包裹', () => {

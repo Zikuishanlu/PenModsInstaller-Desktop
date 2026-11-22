@@ -1,11 +1,9 @@
 /**
- * 市场安装的核心动作（供插件市场 / 安装包市场 / OTA 页面共用）
+ * 市场安装的核心动作（供插件市场 / OTA 页面共用）
  */
 import type { DeviceConnection } from './device';
 import { downloadBytes, type DownloadProgress } from './github';
 import { parsePluginFromZip, installPlugin, type InstallProgress } from './plugin-install';
-import { installApp } from './app-store';
-import type { MarketApp } from './market';
 
 export interface InstallStage {
   phase: string;
@@ -33,59 +31,6 @@ export async function installPluginBytes(
   });
   onLog(`✓ 已安装到 ${target}`);
   return pkg.name;
-}
-
-/** 安装包里可能自带的 install.sh（解压后在根目录） */
-function appScript(kind: 'zip' | 'tar.gz'): string {
-  const extract = kind === 'zip'
-    ? 'unzip -o __market_pkg.zip'
-    : 'tar -xzf __market_pkg.tar.gz';
-  const cleanup = kind === 'zip' ? 'rm -f __market_pkg.zip' : 'rm -f __market_pkg.tar.gz';
-  return [
-    'mount -o remount,rw / 2>/dev/null || true',
-    'cd /userdisk || exit 1',
-    `echo "解压 ${kind === 'zip' ? '.zip' : '.tar.gz'}…"`,
-    `${extract} || exit 1`,
-    'if [ -f __market_install.sh ]; then cp -f __market_install.sh ./install.sh; fi',
-    'if [ -f ./install.sh ]; then chmod +x ./install.sh; echo "执行 install.sh…"; sh ./install.sh; fi',
-    `${cleanup}; rm -f __market_install.sh`,
-    'sync',
-    'echo "完成"',
-  ].join('\n');
-}
-
-/** 从市场条目安装（Release 附件 / app.json 清单 / 手动 URL） */
-export async function installMarketApp(
-  conn: DeviceConnection,
-  app: Pick<MarketApp, 'name' | 'url' | 'kind' | 'installScriptUrl' | 'sizeBytes'>,
-  onLog: (msg: string) => void,
-  onStage?: (s: InstallStage) => void,
-): Promise<void> {
-  onStage?.({ phase: '下载安装包…', received: 0, total: app.sizeBytes });
-  const bytes = await downloadBytes(app.url, (p: DownloadProgress) => {
-    onStage?.({ phase: '下载安装包…', received: p.received, total: p.total });
-  });
-  onLog(`✓ 已下载 ${app.name}（${(bytes.length / 1048576).toFixed(1)}MB）`);
-
-  const files = [{
-    data: bytes,
-    remotePath: app.kind === 'zip' ? '/userdisk/__market_pkg.zip' : '/userdisk/__market_pkg.tar.gz',
-  }];
-  if (app.installScriptUrl) {
-    onStage?.({ phase: '下载 install.sh…' });
-    const scriptBytes = await downloadBytes(app.installScriptUrl);
-    files.push({ data: scriptBytes, remotePath: '/userdisk/__market_install.sh' });
-  }
-
-  onStage?.({ phase: '推送到设备…' });
-  await installApp(conn, {
-    id: 'market_' + app.name,
-    name: app.name,
-    description: '来自安装包市场',
-    sizeMB: bytes.length / 1048576,
-    files,
-    script: appScript(app.kind),
-  }, onLog);
 }
 
 // ── OTA ──

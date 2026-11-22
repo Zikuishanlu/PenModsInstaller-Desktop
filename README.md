@@ -1,7 +1,7 @@
 # PenMods 安装器（桌面版）
 
 把 [pen.skdkzzx.dpdns.org](https://pen.skdkzzx.dpdns.org/) 的网页版安装器做成 Windows 桌面程序，
-并在原版基础上加了侧边栏布局、插件/安装包/OTA 三个市场、设置页与音乐模块。
+并在原版基础上加了侧边栏布局、插件市场与 OTA 更新、设置页与音乐模块。
 
 - 本项目源码：<https://github.com/Zikuishanlu/PenModsInstaller-Desktop>
 - 在线版：<https://pen.skdkzzx.dpdns.org/>
@@ -19,22 +19,21 @@
 | 网页版本体（`skdkzzx/PenModsInstaller`：界面、安装流程、USB/SSH 逻辑） | [skdkzzx](https://github.com/skdkzzx/PenModsInstaller) |
 | 设备端内核 PenMods（`libPenMods.so` 等） | [PenUniverse/PenMods](https://github.com/PenUniverse/PenMods) |
 | OTA 更新包 | [Lyrecoul/penmods-ota](https://github.com/Lyrecoul/penmods-ota) |
-| 桌面封装 + 三个市场/更新页面 + 品牌与文案调整 | Zikuishanlu（本仓库） |
+| 桌面封装 + 插件市场/OTA 页面 + 品牌与文案调整 | Zikuishanlu（本仓库） |
 
 本仓库做的事：① 把网页版封装成 Windows 桌面程序（Electron 外壳 + 本地 HTTP/WS 服务，见 [实现原理](docs/IMPLEMENTATION.md)）；
-② 新增「插件市场 / 安装包市场 / OTA 更新」三个页面；③ 顶部标签导航改成侧边栏，新增「设置」页与「音乐」模块；
+② 新增「插件市场 / OTA 更新」页面；③ 顶部标签导航改成侧边栏，新增「设置」页与「音乐」模块；
 ④ 安装链路与本地服务的安全加固（明细见 [CHANGELOG.md](CHANGELOG.md)）；⑤ 品牌与文案调整。
 
 依 GPL-3.0 分发，原始版权声明完整保留（见 [LICENSE](LICENSE)、[docs/NOTICE.md](docs/NOTICE.md)）。
 若要基于本项目继续修改，同样需要开源，并保留上述所有归属声明。
 
 想搞懂「为什么在浏览器里也能给词典笔装东西」：
-👉 **[实现原理详解](docs/IMPLEMENTATION.md)**（WebUSB + ADB、SSH 代理、安装命令链、三项市场机制）
+👉 **[实现原理详解](docs/IMPLEMENTATION.md)**（WebUSB + ADB、SSH 代理、安装命令链、插件市场与 OTA 机制）
 
 | 功能 | 位置 | 数据来源 |
 | --- | --- | --- |
 | 插件市场（在线浏览 + 一键安装插件） | 插件安装 → **插件市场** | 你的 GitHub 仓库（默认 `skdkzzx`，可改） |
-| 安装包市场（在线浏览 + 一键安装应用包） | 安装包 → **安装包市场** | 同上：仓库的 Release 附件或 `app.json` |
 | PenMods 运行时 OTA 更新 | 侧边栏 → **OTA 更新** | `Lyrecoul/penmods-ota` 的 `update_*.zip` |
 | 音乐：本地选歌 / 多平台在线搜歌 / 分享链接导入歌单 / 我的喜欢，推到笔上 | 侧边栏 → **音乐** | 你自己填的音源（见「音乐模块」一节） |
 | 设置：GitHub Token、连接方式、音源、清缓存、检查更新 | 侧边栏 → **设置** | 本机 localStorage + GitHub Release |
@@ -44,9 +43,9 @@
 
 ![主界面](docs/screenshots/sidebar.png)
 
-| 插件市场 | 安装包市场 | OTA 更新 |
-| --- | --- | --- |
-| ![插件市场](docs/screenshots/plugin-market.png) | ![安装包市场](docs/screenshots/app-market.png) | ![OTA](docs/screenshots/ota.png) |
+| 插件市场 | OTA 更新 |
+| --- | --- |
+| ![插件市场](docs/screenshots/plugin-market.png) | ![OTA](docs/screenshots/ota.png) |
 
 | 设置（含检查更新） | 音乐 · 本地推送 | 音乐 · 在线搜歌 |
 | --- | --- | --- |
@@ -83,7 +82,7 @@
 | --- | --- |
 | 装不上、报错、疑似 bug | **优先开 Issue**：附上日志和机型，别人也能搜到答案，不用重复问 |
 | 想加功能、改文案、提体验建议 | Issue 或 QQ / 邮箱都可以 |
-| 自己写的插件或安装包没出现在市场里 | 带上仓库地址找我，多半是 `metadata.json` / `app.json` 放错了位置 |
+| 自己写的插件没出现在市场里 | 带上仓库地址找我，多半是 `metadata.json` 放错了位置 |
 | 纯聊天、问点零碎问题 | QQ 最直接，回复也快 |
 
 为了让问题一次说清，反馈时顺手带上这几样：
@@ -184,28 +183,6 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 安装目录名依次取：`icon` 里的 `plugins/<名字>/` → `id` 最后一段 → 仓库名。
 所以**想控制装到哪个目录，就把 `icon` 写成 `.../plugins/<你要的目录名>/icon.png`**。
 
-## 安装包市场怎么发布
-
-两种都支持，扫描时优先 Release 附件：
-
-1. **GitHub Release 附件**：附上 `.zip` / `.tar.gz` / `.tgz`（>200MB 会跳过）
-2. **仓库根目录 `app.json`**：
-
-```json
-{
-  "id": "my-app",
-  "name": "我的应用",
-  "version": "1.0.0",
-  "description": "做什么用的",
-  "author": "skdkzzx",
-  "archive": "https://github.com/.../app.zip",
-  "installScript": "https://raw.githubusercontent.com/.../install.sh",
-  "icon": "https://raw.githubusercontent.com/.../icon.png"
-}
-```
-
-安装时会：推包到 `/userdisk` → 解压 → 若有 `install.sh` 就执行 → 清理。
-
 ## OTA 更新
 
 读取 `Lyrecoul/penmods-ota` 根目录的 `update_*.zip`，按版本号排序，最新版可一键更新。
@@ -274,10 +251,9 @@ app/
     server.cjs    本地 HTTP + /ws/ssh + /api/gh + /api/dl
   src/
     lib/github.ts         GitHub API、断点续传下载
-    lib/market.ts         仓库扫描 → 插件/安装包清单
+    lib/market.ts         仓库扫描 → 插件清单
     lib/market-install.ts 市场包 → 设备安装（含 OTA 脚本）
     pages/PluginMarket/   插件市场
-    pages/AppsMarket/     安装包市场
     pages/OtaPage/        OTA 更新
     pages/Settings/       设置（Token / 连接方式 / 音源 / 检查更新）
     pages/Music/          音乐（本地推送 / 在线搜歌 / 歌单）
