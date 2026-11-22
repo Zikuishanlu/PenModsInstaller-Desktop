@@ -3,16 +3,7 @@ import { ghGet, getOwner, getToken, setOwner, setToken } from '../../lib/github'
 import { BRAND } from '../../lib/branding';
 import { checkInstallerUpdate, type UpdateCheck } from '../../lib/updates';
 import {
-  DEFAULT_DEVICE_MUSIC_DIR,
-  PLATFORMS,
-  QUALITY_OPTIONS,
-  loadMusicSettings,
-  platformLabel,
-  saveMusicSettings,
-  type Quality,
-} from '../../lib/music';
-import {
-  IconCheck, IconEye, IconEyeOff, IconMusic, IconRefresh, IconSettings, IconShield, IconTrash,
+  IconCheck, IconEye, IconEyeOff, IconRefresh, IconSettings, IconShield, IconTrash,
 } from '../../components/icons';
 
 /**
@@ -31,11 +22,6 @@ const LOCAL_KEYS = [
   'sshHost',
   'sshPort',
   'pluginsHubTab',
-  'music_source',
-  'music_sources',
-  'music_device_dir',
-  'music_quality',
-  'music_favorites',
 ];
 
 function Card({
@@ -97,9 +83,6 @@ export function Settings(props: SettingsProps) {
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'done' | 'error'>('idle');
   const [updateErr, setUpdateErr] = useState('');
   const [checkedAt, setCheckedAt] = useState('');
-  // 音乐
-  const [music, setMusic] = useState(() => loadMusicSettings());
-  const [musicMsg, setMusicMsg] = useState('');
   // 本地数据
   const [cleared, setCleared] = useState(false);
 
@@ -349,98 +332,6 @@ export function Settings(props: SettingsProps) {
             </p>
           </div>
         )}
-      </Card>
-
-      {/* ── 音乐 ── */}
-      <Card
-        title="音乐"
-        desc="「音乐」模块的音源：每个平台可以填各自的地址，也可以只填一个兜底音源让所有平台共用。音源由你自己提供，安装器只负责请求、下载和推送。"
-        icon={<IconMusic className="w-4 h-4" />}
-      >
-        <div className="space-y-2">
-          <label className="block text-[11px] text-[#64748b]">各平台音源</label>
-          {PLATFORMS.map((p) => (
-            <div key={p} className="flex items-center gap-2">
-              <span className="w-20 shrink-0 text-[11px] text-[#475569]">{platformLabel(p)}</span>
-              <input
-                value={music.sources[p] || ''}
-                onChange={(e) => setMusic({ ...music, sources: { ...music.sources, [p]: e.target.value } })}
-                placeholder="留空则用下面的兜底音源"
-                className="flex-1 min-w-0 text-[12px] px-3 py-1.5 border border-[#e2e8f0] rounded-lg focus:outline-none focus:border-[#2563eb]"
-              />
-            </div>
-          ))}
-          <div className="flex items-center gap-2 pt-1">
-            <span className="w-20 shrink-0 text-[11px] text-[#475569]">兜底音源</span>
-            <input
-              value={music.fallback}
-              onChange={(e) => setMusic({ ...music, fallback: e.target.value })}
-              placeholder="https://music.example.com 或 http://192.168.1.10:3000"
-              className="flex-1 min-w-0 text-[12px] px-3 py-1.5 border border-[#e2e8f0] rounded-lg focus:outline-none focus:border-[#2563eb]"
-            />
-          </div>
-          <p className="text-[10px] text-[#94a3b8] leading-relaxed">
-            约定三个接口：<code className="bg-[#f1f5f9] px-1 rounded">GET /search?keyword=&amp;limit=&amp;platform=</code> 返回
-            {' '}<code className="bg-[#f1f5f9] px-1 rounded">{'{ songs: [{ id, name, singer, album, duration }] }'}</code>；
-            {' '}<code className="bg-[#f1f5f9] px-1 rounded">GET /url?id=&amp;platform=&amp;quality=</code> 返回
-            {' '}<code className="bg-[#f1f5f9] px-1 rounded">{'{ url }'}</code>；
-            {' '}<code className="bg-[#f1f5f9] px-1 rounded">GET /playlist?platform=&amp;id=&amp;url=</code> 返回同结构的歌曲列表
-            （解析「分享歌单」链接用，platform 为 netease / qq / kugou / kuwo / migu / other，短链只给 url）；
-            quality 为 128k / 320k / flac / flac24bit。
-            返回里自带 <code className="bg-[#f1f5f9] px-1 rounded">url</code> 的可以直接给。
-          </p>
-
-          <div className="flex flex-wrap items-end gap-3 pt-1">
-            <div>
-              <label className="block text-[11px] text-[#64748b] pb-1">默认音质</label>
-              <select
-                value={music.quality}
-                onChange={(e) => setMusic({ ...music, quality: e.target.value as Quality })}
-                className="text-[12px] px-3 py-1.5 border border-[#e2e8f0] rounded-lg bg-white focus:outline-none focus:border-[#2563eb]"
-              >
-                {QUALITY_OPTIONS.map((q) => (
-                  <option key={q.value} value={q.value}>{q.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1 min-w-[220px]">
-              <label className="block text-[11px] text-[#64748b] pb-1">推送到设备上的目录</label>
-              <input
-                value={music.deviceDir}
-                onChange={(e) => setMusic({ ...music, deviceDir: e.target.value })}
-                placeholder={DEFAULT_DEVICE_MUSIC_DIR}
-                className="w-full text-[12px] px-3 py-1.5 border border-[#e2e8f0] rounded-lg focus:outline-none focus:border-[#2563eb]"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button
-              onClick={() => {
-                saveMusicSettings(music);
-                setMusic(loadMusicSettings());
-                setMusicMsg('已保存');
-                setTimeout(() => setMusicMsg(''), 2000);
-              }}
-              className="text-[11px] px-3 py-1.5 bg-[#0f172a] text-white rounded-lg hover:bg-[#1e293b]"
-            >
-              保存
-            </button>
-            <button
-              onClick={() => {
-                const def = { sources: {}, fallback: '', deviceDir: DEFAULT_DEVICE_MUSIC_DIR, quality: '320k' as Quality };
-                saveMusicSettings(def);
-                setMusic(loadMusicSettings());
-                setMusicMsg('已恢复默认');
-                setTimeout(() => setMusicMsg(''), 2000);
-              }}
-              className="text-[11px] px-3 py-1.5 border border-[#e2e8f0] rounded-lg text-[#64748b] hover:bg-[#f8fafc]"
-            >
-              恢复默认
-            </button>
-            {musicMsg && <span className="text-[11px] text-[#15803d]">{musicMsg}</span>}
-          </div>
-        </div>
       </Card>
 
       {/* ── 本地数据 ── */}

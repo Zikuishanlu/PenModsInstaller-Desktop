@@ -1,7 +1,7 @@
 # PenMods 安装器（桌面版）
 
 把 [pen.skdkzzx.dpdns.org](https://pen.skdkzzx.dpdns.org/) 的网页版安装器做成 Windows 桌面程序，
-并在原版基础上加了侧边栏布局、插件市场与 OTA 更新、设置页与音乐模块。
+并在原版基础上加了侧边栏布局、插件市场与 OTA 更新、设置页。
 
 - 本项目源码：<https://github.com/Zikuishanlu/PenModsInstaller-Desktop>
 - 在线版：<https://pen.skdkzzx.dpdns.org/>
@@ -22,7 +22,7 @@
 | 桌面封装 + 插件市场/OTA 页面 + 品牌与文案调整 | Zikuishanlu（本仓库） |
 
 本仓库做的事：① 把网页版封装成 Windows 桌面程序（Electron 外壳 + 本地 HTTP/WS 服务，见 [实现原理](docs/IMPLEMENTATION.md)）；
-② 新增「插件市场 / OTA 更新」页面；③ 顶部标签导航改成侧边栏，新增「设置」页与「音乐」模块；
+② 新增「插件市场 / OTA 更新」页面；③ 顶部标签导航改成侧边栏，新增「设置」页；
 ④ 安装链路与本地服务的安全加固（明细见 [CHANGELOG.md](CHANGELOG.md)）；⑤ 品牌与文案调整。
 
 依 GPL-3.0 分发，原始版权声明完整保留（见 [LICENSE](LICENSE)、[docs/NOTICE.md](docs/NOTICE.md)）。
@@ -35,7 +35,6 @@
 | --- | --- | --- |
 | 插件市场（在线浏览 + 一键安装插件） | 插件安装 → **插件市场** | 你的 GitHub 仓库（默认 `skdkzzx`，可改） |
 | PenMods 运行时 OTA 更新 | 侧边栏 → **OTA 更新** | `Lyrecoul/penmods-ota` 的 `update_*.zip` |
-| 音乐：本地选歌 / 多平台在线搜歌 / 分享链接导入歌单 / 我的喜欢，推到笔上 | 侧边栏 → **音乐** | 你自己填的音源（见「音乐模块」一节） |
 | 设置：GitHub Token、连接方式、音源、清缓存、检查更新 | 侧边栏 → **设置** | 本机 localStorage + GitHub Release |
 
 
@@ -47,13 +46,9 @@
 | --- | --- |
 | ![插件市场](docs/screenshots/plugin-market.png) | ![OTA](docs/screenshots/ota.png) |
 
-| 设置（含检查更新） | 音乐 · 本地推送 | 音乐 · 在线搜歌 |
-| --- | --- | --- |
-| ![设置](docs/screenshots/settings.png) | ![音乐](docs/screenshots/music-local.png) | ![在线搜歌](docs/screenshots/music-platforms.png) |
-
-| 音乐 · 歌单分享链接导入 | 音乐 · 我的喜欢 |
-| --- | --- |
-| ![歌单导入](docs/screenshots/music-playlist.png) | ![我的喜欢](docs/screenshots/music-favorites.png) |
+| 设置（含检查更新） |
+| --- |
+| ![设置](docs/screenshots/settings.png) |
 
 
 ## 下载
@@ -199,42 +194,6 @@ npm run dist:portable  # 产出免安装单文件：PenMods-Installer-Portable-<
 
 OTA 源仓库可以在页面里改，也支持贴任意 zip 直链。
 
-## 音乐模块
-
-侧边栏「音乐」有四个页签，全部围绕「把歌放到笔上」：
-
-- **本地音乐**：选文件夹或选文件，勾选后推送（默认目录 `/userdisk/Music`，可在设置里改）
-- **在线搜歌**：顶部选平台（**全部平台** / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕）→ 搜索 → 试听 / 下载到笔；
-  「全部平台」会把配好音源的平台都问一遍，合并去重后按平台标注来源，某个平台挂了不影响其它平台出结果
-- **歌单导入**：只认「分享歌单」的链接，粘整段分享文字即可（支持网易云、QQ 音乐、酷狗、酷我、咪咕，也认其它平台的链接），
-  认出平台与歌单 id 后交给对应平台的音源解析成歌曲列表，再批量下载到笔
-- **我的喜欢**：搜索或歌单里点心形收藏，存本机（最多 500 首），可一键全部推到笔上
-- 右上角可以选**音质**（128k / 320k / flac / flac24bit），实际给到哪一档由音源决定
-
-播放来源**不内置任何第三方接口**（那属于灰色地带），需要你在 **设置 → 音乐** 里填音源地址：
-每个平台可以填各自的地址，也可以只填一个「兜底音源」让所有平台共用（旧版本的单一音源地址会自动当作兜底）。
-接口是三个 GET：
-
-```text
-GET {base}/search?keyword=晴天&limit=30&platform=netease
-→ { "songs": [{ "id": "1", "name": "晴天", "singer": "周杰伦", "album": "叶惠美", "duration": 269 }] }
-
-GET {base}/url?id=1&platform=netease&quality=320k
-→ { "url": "https://example.com/x.mp3" }        # quality: 128k / 320k / flac / flac24bit
-
-GET {base}/playlist?platform=netease&id=3778678
-→ { "songs": [ ... 同上结构 ... ] }              # platform: netease / qq / kugou / kuwo / migu / other
-```
-
-歌单短链（如 `163cn.tv/...`）没有数字 id 时只带 `url=` 交给音源解析；所以音源要支持哪种平台，
-取决于你自己那份音源实现。`platform` 参数只是告诉音源「这歌来自哪个平台」，一个音源服务内部如何分发由它自己决定。
-
-搜索结果里直接带 `url` 的可以省掉第二次请求。字段名兼容 `songs / data / list / items`、
-`name|songname|title`、`singer|artist|author`、`duration|interval` 这几种常见写法。
-
-渲染层不能直连外站（CORS），所以音频由本地服务 `/api/proxy` 代取：允许 http/https 任意主机（音源可能在内网），
-但会逐跳校验重定向、拦 `169.254.169.254` 这类云元数据地址、单文件上限 120MB，并透传 `Range`。
-
 ## GitHub Token（可选但推荐）
 
 匿名调用 GitHub API 每小时 60 次，扫市场很快就用完。在**设置 → GitHub 访问**里填入
@@ -255,9 +214,7 @@ app/
     lib/market-install.ts 市场包 → 设备安装（含 OTA 脚本）
     pages/PluginMarket/   插件市场
     pages/OtaPage/        OTA 更新
-    pages/Settings/       设置（Token / 连接方式 / 音源 / 检查更新）
-    pages/Music/          音乐（本地推送 / 在线搜歌 / 歌单）
-    lib/music.ts          音源接口、歌单解析、设备推送
+    pages/Settings/       设置（Token / 连接方式 / 清缓存 / 检查更新）
     lib/updates.ts        桌面端本体版本检查
     pages/hubs.tsx        本地安装 / 市场 的分段切换
   tests/smoke.mjs        零依赖冒烟测试（CI 里跑）

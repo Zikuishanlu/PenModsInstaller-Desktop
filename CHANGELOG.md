@@ -4,11 +4,9 @@
 
 移除
 
-- **删掉「安装包」模块**（侧边栏「安装包」入口、上传安装页、安装包市场一起）：
-  连带删除 `src/pages/AppStore`、`src/pages/AppsMarket`、`src/lib/app-store.ts`，
-  以及 `market.ts` 里的 `discoverApps`/`AppManifest` 和 `market-install.ts` 的 `installMarketApp`。
-  以后 GitHub 仓库的 Release 附件和 `app.json` 清单都不会再被识别成安装包；
-  装东西请走「插件安装」或「OTA 更新」。设置里清理本地数据也不再清 `appsHubTab`。
+- **删掉「音乐」模块**（侧边栏入口、`src/pages/Music`、`src/lib/music.ts`、设置里的音源卡片一起）：
+  本地推送 / 多平台搜歌 / 歌单导入 / 我的喜欢都不再提供；本地服务顺带移除只给它用的 `/api/proxy` 转发端点
+  （少一个能代理任意 http 地址的入口）。`music_*` 这几个 localStorage key 不再写入。
 
 ## v1.1.2 (2026-11-21)
 

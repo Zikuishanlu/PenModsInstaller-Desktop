@@ -9,12 +9,11 @@ import { EnableSSH } from './pages/EnableSSH';
 import { PluginsHub } from './pages/hubs';
 import { OtaPage } from './pages/OtaPage';
 import { Settings } from './pages/Settings';
-import { Music } from './pages/Music';
 import { connectSSHProxy, disconnectSSH, setOnDisconnect } from './lib/ssh';
 import { getInstallFiles, getInstallFilesFromZip, type InstallFile } from './lib/files';
 import { IconPackage, IconUsb, IconZap, IconCheck,
   IconRefresh, IconUpload, IconTerminal, IconX, IconFolder, IconShield,
-  IconMusic, IconSettings, type IconProps
+  IconSettings, type IconProps
 } from './components/icons';
 import { DisclaimerModal } from './components/DisclaimerModal';
 import { BRAND } from './lib/branding';
@@ -51,7 +50,7 @@ class FileManagerErrorBoundary extends Component<
 type Step = 'idle' | 'installing' | 'done' | 'error';
 
 /** 工具标签 */
-type ToolTab = 'penmods' | 'music' | 'files' | 'plugins' | 'ssh' | 'enable-ssh' | 'ota' | 'settings';
+type ToolTab = 'penmods' | 'files' | 'plugins' | 'ssh' | 'enable-ssh' | 'ota' | 'settings';
 
 interface NavTab {
   id: ToolTab;
@@ -81,7 +80,6 @@ function KeptTab({ tab, active, mounted, children }: {
 /** 侧边栏 · 常用功能 */
 const TABS_MAIN: NavTab[] = [
   { id: 'penmods', label: 'PenMods 安装', icon: IconZap },
-  { id: 'music', label: '音乐', icon: IconMusic },
   { id: 'plugins', label: '插件安装', icon: IconPackage },
   { id: 'ssh', label: '终端', icon: IconTerminal },
   { id: 'files', label: '文件管理', icon: IconFolder },
@@ -939,14 +937,6 @@ function App() {
           />
         )}
         */}
-        <KeptTab tab="music" active={activeTab === 'music'} mounted={mountedTabs}>
-          <Music
-            conn={deviceConn}
-            connected={deviceStatus === 'connected'}
-            onLog={(msg) => setLog(prev => [...prev, msg])}
-            onOpenSettings={() => goTab('settings')}
-          />
-        </KeptTab>
         <KeptTab tab="settings" active={activeTab === 'settings'} mounted={mountedTabs}>
           <Settings
             connMode={connMode}
