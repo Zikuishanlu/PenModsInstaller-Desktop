@@ -6,23 +6,15 @@
  */
 import { PLUGINS_DIR } from './plugin-install';
 
-export const DEFAULT_OWNER = 'skdkzzx';
 export const OTA_REPO = { owner: 'Lyrecoul', repo: 'penmods-ota' };
 
 const TOKEN_KEY = 'gh_token';
-const OWNER_KEY = 'market_owner';
 
 export function getToken(): string {
   try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
 }
 export function setToken(t: string) {
   try { t ? localStorage.setItem(TOKEN_KEY, t.trim()) : localStorage.removeItem(TOKEN_KEY); } catch { /* 隐私模式 */ }
-}
-export function getOwner(): string {
-  try { return (localStorage.getItem(OWNER_KEY) || DEFAULT_OWNER).trim() || DEFAULT_OWNER; } catch { return DEFAULT_OWNER; }
-}
-export function setOwner(o: string) {
-  try { localStorage.setItem(OWNER_KEY, o.trim() || DEFAULT_OWNER); } catch { /* noop */ }
 }
 
 export class GhError extends Error {
@@ -107,24 +99,11 @@ export interface GhRelease {
 }
 
 /** 列出用户仓库（最多 200 个，按最近推送排序） */
-export async function listRepos(owner: string): Promise<GhRepo[]> {
-  const out: GhRepo[] = [];
-  for (const page of [1, 2]) {
-    const batch = await ghGet<GhRepo[]>(
-      `/users/${owner}/repos?per_page=100&page=${page}&sort=pushed&type=owner`,
-    );
-    out.push(...batch.filter(r => !r.fork));
-    if (batch.length < 100) break;
-  }
-  return out.filter(r => !r.archived);
-}
-
 /** 取单个仓库信息（用于内置推荐仓库，owner 可能和市场源不同） */
 export async function getRepo(owner: string, repo: string): Promise<GhRepo> {
   return ghGet<GhRepo>(`/repos/${owner}/${repo}`);
 }
 
-/** 列出仓库某个目录 */
 export async function listContents(owner: string, repo: string, path = ''): Promise<GhContent[]> {
   const p = `/repos/${owner}/${repo}/contents/${path.replace(/^\/+/, '')}`;
   const data = await ghGet<GhContent[] | GhContent>(p);

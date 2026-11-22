@@ -1,12 +1,13 @@
 /**
- * 插件市场：自动发现用户仓库里的 metadata.json（PenMods 插件清单）
+ * 插件市场：读取内置清单里各仓库的 metadata.json（PenMods 插件清单）
  *
+ * 市场内容 = FEATURED_PLUGINS 里的仓库（不再扫某个账号下的全部仓库）。
  * GitHub 没有插件话题（topics）时，只能靠内容识别，因此这里做了两级探测：
  *   1. 仓库根目录 metadata.json
  *   2. 一级子目录（plugin/ plugins/ src/ app/）里的 metadata.json
  */
 import {
-  listRepos, getRepo, listContents, readRepoText, rawUrl, repoZipUrl,
+  getRepo, listContents, readRepoText, rawUrl, repoZipUrl,
   type GhRepo, type GhContent,
 } from './github';
 import type { PluginMeta } from './plugin-install';
@@ -138,34 +139,34 @@ async function inspectPlugin(owner: string, repo: GhRepo): Promise<MarketPlugin 
 }
 
 export async function discoverPlugins(
-  owner: string,
   force = false,
   onProgress?: (msg: string) => void,
 ): Promise<MarketPlugin[]> {
-  const cached = pluginCache.get(owner);
+  const cacheKey = 'featured';
+  const cached = pluginCache.get(cacheKey);
   if (!force && cached && Date.now() - cached.at < CACHE_TTL) return cached.data;
 
-  onProgress?.(`正在列出 @${owner} 的仓库…`);
-  const repos = await listRepos(owner);
-  onProgress?.(`共 ${repos.length} 个仓库，正在识别插件…`);
-  const found = await mapLimit(repos, 4, r => inspectPlugin(owner, r));
-
-  // 内置推荐仓库：可能属于别的作者，单独取仓库信息后再探测
-  const featured = await mapLimit(FEATURED_PLUGINS, 3, async spec => {
+  onProgress?.(`正在读取内置插件清单（${FEATURED_PLUGINS.length} 个仓库）…`);
+  const failures: string[] = [];
+  const found = await mapLimit(FEATURED_PLUGINS, 3, async (spec) => {
     const [o, name] = spec.split('/');
     if (!o || !name) return null;
     try {
       return await inspectPlugin(o, await getRepo(o, name));
-    } catch {
+    } catch (e) {
+      failures.push(`${spec}：${e instanceof Error ? e.message : String(e)}`);
       return null;
     }
   });
 
-  const seen = new Set<string>();
-  const data = [...found, ...featured]
+  // 全部仓库都没读成功时不要假装「市场是空的」——把原因抛出去，页面才能显示错误
+  if (failures.length >= FEATURED_PLUGINS.length) {
+    throw new Error(`读不到内置插件清单，${failures.length} 个仓库全部失败。${failures[0]}`);
+  }
+
+  const data = found
     .filter((x): x is MarketPlugin => !!x)
-    .filter(x => (seen.has(x.key) ? false : (seen.add(x.key), true)))
     .sort((a, b) => b.stars - a.stars || a.name.localeCompare(b.name));
-  pluginCache.set(owner, { at: Date.now(), data });
+  pluginCache.set(cacheKey, { at: Date.now(), data });
   return data;
 }

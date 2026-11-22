@@ -10,10 +10,11 @@
 
 新增
 
-- **插件市场内置推荐仓库**：除了扫「默认市场源」那个账号，还固定扫描
+- **插件市场改为「内置清单」模式**：市场只展示清单里的三个仓库 ——
   `skdkzzx/youdao-pen-reader`（电子书阅读器）、`Haikure/BiliPocket`（笔里哔哩）、
-  `fjw2664658647-source/penmods-qqmusic`（笔上QQ音乐），三个来自不同作者的插件不必改市场源就能看到，
-  清单在 `app/src/lib/market.ts` 的 `FEATURED_PLUGINS`。
+  `fjw2664658647-source/penmods-qqmusic`（笔上QQ音乐），不再按账号扫描全部仓库；
+  清单在 `app/src/lib/market.ts` 的 `FEATURED_PLUGINS`，加减插件改这个数组即可。
+  设置里随之去掉「默认市场源」输入（`setOwner`/`getOwner` 一并删除，`market_owner` 不再使用）。
 
 - **删掉「安装包」模块**（侧边栏「安装包」入口、上传安装页、安装包市场一起）：
   连带删除 `src/pages/AppStore`、`src/pages/AppsMarket`、`src/lib/app-store.ts`，

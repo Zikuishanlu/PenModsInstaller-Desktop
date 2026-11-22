@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ghGet, getOwner, getToken, setOwner, setToken } from '../../lib/github';
+import { ghGet, getToken, setToken } from '../../lib/github';
 import { BRAND } from '../../lib/branding';
 import { checkInstallerUpdate, type UpdateCheck } from '../../lib/updates';
 import {
@@ -8,7 +8,7 @@ import {
 
 /**
  * 设置页：把原先散落在各页的设置集中到这里
- *   1. GitHub 访问（Token / 默认市场源）
+ *   1. GitHub 访问（Token / 限额）
  *   2. 设备连接（默认连接方式、SSH 主机与端口）
  *   3. 本地数据（清除本应用写入的 localStorage）
  *   4. 关于（版本与链接）
@@ -17,7 +17,6 @@ import {
 /** 本应用写入 localStorage 的全部 key —— 清除缓存按这个白名单来，不碰别人的数据 */
 const LOCAL_KEYS = [
   'gh_token',
-  'market_owner',
   'connMode',
   'sshHost',
   'sshPort',
@@ -72,8 +71,6 @@ export function Settings(props: SettingsProps) {
   const [token, setTokenState] = useState(getToken);
   const [showToken, setShowToken] = useState(false);
   const [tokenMsg, setTokenMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
-  const [owner, setOwnerState] = useState(getOwner);
-  const [ownerMsg, setOwnerMsg] = useState<string | null>(null);
   const [rate, setRate] = useState<{ remaining: number; limit: number } | null>(null);
   const [checking, setChecking] = useState(false);
   // 关于
@@ -162,21 +159,15 @@ export function Settings(props: SettingsProps) {
     }
   };
 
-  const saveOwner = () => {
-    setOwner(owner);
-    setOwnerMsg('已保存，市场页刷新后生效');
-  };
-
   const clearLocal = () => {
     const ok = window.confirm(
-      '清除本应用保存在本机的设置？\n\n会清掉：GitHub Token、默认市场源、默认连接方式、SSH 主机与端口、两个市场的页签记忆。\n（不会动设备上的任何文件，也不会清安装日志）',
+      '清除本应用保存在本机的设置？\n\n会清掉：GitHub Token、默认连接方式、SSH 主机与端口、页签记忆。\n（不会动设备上的任何文件，也不会清安装日志）',
     );
     if (!ok) return;
     for (const key of LOCAL_KEYS) {
       try { localStorage.removeItem(key); } catch { /* 隐私模式 */ }
     }
     setTokenState('');
-    setOwnerState('');
     setRate(null);
     setCleared(true);
   };
@@ -199,7 +190,7 @@ export function Settings(props: SettingsProps) {
       {/* ── GitHub 访问 ── */}
       <Card
         title="GitHub 访问"
-        desc="市场页要读 GitHub API。未配置 Token 时匿名限额 60 次/小时，扫描多个仓库时容易触发限流。"
+        desc="插件市场要读 GitHub API。未配置 Token 时匿名限额 60 次/小时，刷新频繁时容易触发限流。"
         icon={<IconShield className="w-4 h-4" />}
       >
         <div className="space-y-2">
@@ -251,29 +242,6 @@ export function Settings(props: SettingsProps) {
           </p>
         </div>
 
-        <div className="space-y-2 pt-1">
-          <label className="text-[10px] text-[#94a3b8] block">默认市场源（GitHub 用户名）</label>
-          <div className="flex gap-2">
-            <div className="flex items-center flex-1 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg px-2.5">
-              <span className="text-xs text-[#94a3b8] flex-shrink-0">github.com/</span>
-              <input
-                value={owner}
-                onChange={(e) => { setOwnerState(e.target.value); setOwnerMsg(null); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') saveOwner(); }}
-                placeholder="skdkzzx"
-                spellCheck={false}
-                className="flex-1 bg-transparent px-1 py-2 text-xs outline-none font-mono text-[#0f172a]"
-              />
-            </div>
-            <button
-              onClick={saveOwner}
-              className="text-[11px] px-3 py-2 border border-[#e2e8f0] rounded-lg text-[#0f172a] hover:bg-[#f8fafc] flex-shrink-0"
-            >
-              保存
-            </button>
-          </div>
-          {ownerMsg && <p className="text-[10px] text-[#15803d]">{ownerMsg}</p>}
-        </div>
       </Card>
 
       {/* ── 设备连接 ── */}
@@ -348,7 +316,7 @@ export function Settings(props: SettingsProps) {
             <IconTrash className="w-3.5 h-3.5" /> 清除本地设置
           </button>
           <span className="text-[10px] text-[#94a3b8]">
-            GitHub Token / 市场源 / 连接方式 / SSH 地址 / 页签记忆
+            GitHub Token / 连接方式 / SSH 地址 / 页签记忆
           </span>
         </div>
         {cleared && (

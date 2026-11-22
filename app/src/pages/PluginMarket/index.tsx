@@ -3,7 +3,7 @@ import type { DeviceConnection } from '../../lib/device';
 import {
   discoverPlugins, type MarketPlugin,
 } from '../../lib/market';
-import { downloadBytes, getOwner, setOwner, getToken, setToken, listInstalledPluginDirs } from '../../lib/github';
+import { downloadBytes, getToken, setToken, listInstalledPluginDirs } from '../../lib/github';
 import { installPluginBytes, type InstallStage } from '../../lib/market-install';
 import { IconRefresh, IconPackage, IconCheck } from '../../components/icons';
 
@@ -30,8 +30,6 @@ function fmtDate(iso: string): string {
 }
 
 export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
-  const [owner, setOwnerState] = useState(getOwner);
-  const [ownerInput, setOwnerInput] = useState(getOwner);
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<MarketPlugin[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,12 +51,12 @@ export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
     }
   }, [connected, conn]);
 
-  const load = useCallback(async (force: boolean, forOwner: string) => {
+  const load = useCallback(async (force: boolean) => {
     setLoading(true); setError(null);
     try {
-      const list = await discoverPlugins(forOwner, force, msg => onLog(msg));
+      const list = await discoverPlugins(force, msg => onLog(msg));
       setItems(list);
-      onLog(`插件市场：@${forOwner} 共发现 ${list.length} 个插件`);
+      onLog(`插件市场：共发现 ${list.length} 个插件`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setItems([]);
@@ -67,15 +65,8 @@ export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
     }
   }, [onLog]);
 
-  useEffect(() => { void load(false, owner); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void refreshInstalled(); }, [refreshInstalled]);
-
-  const applyOwner = () => {
-    const v = ownerInput.trim().replace(/^@/, '').replace(/^https?:\/\/github\.com\//i, '').replace(/\/.*$/, '');
-    if (!v) return;
-    setOwner(v); setOwnerState(v);
-    void load(true, v);
-  };
 
   const doInstall = async (p: MarketPlugin) => {
     if (!conn || !connected) { setError('请先连接设备（USB 或 SSH）'); return; }
@@ -132,7 +123,7 @@ export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
               <IconPackage className="w-4 h-4" /> 插件市场
             </h2>
             <p className="text-[11px] text-[#94a3b8] mt-0.5">
-              自动扫描 GitHub 仓库根目录的 <code className="bg-[#f1f5f9] px-1 rounded">metadata.json</code>，直接装到设备的 PenMods 插件目录
+              内置清单里的插件仓库各读一份 <code className="bg-[#f1f5f9] px-1 rounded">metadata.json</code>，直接装到设备的 PenMods 插件目录
             </p>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -140,7 +131,7 @@ export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
               className="text-[11px] px-2 py-1.5 border border-[#e2e8f0] rounded-lg text-[#64748b] hover:bg-[#f8fafc]">
               设置
             </button>
-            <button onClick={() => void load(true, owner)} disabled={loading}
+            <button onClick={() => void load(true)} disabled={loading}
               className="text-[11px] px-2 py-1.5 border border-[#e2e8f0] rounded-lg text-[#64748b] hover:bg-[#f8fafc] flex items-center gap-1 disabled:opacity-50">
               {loading ? <Spinner /> : <IconRefresh className="w-3.5 h-3.5" />} 刷新
             </button>
@@ -148,13 +139,6 @@ export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
-          <div className="flex items-center bg-[#f8fafc] border border-[#e2e8f0] rounded-lg px-2.5 flex-shrink-0">
-            <span className="text-xs text-[#94a3b8]">github.com/</span>
-            <input value={ownerInput} onChange={e => setOwnerInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') applyOwner(); }}
-              className="bg-transparent px-1 py-2 text-xs outline-none w-28 font-mono text-[#0f172a]"
-              placeholder="用户名" />
-          </div>
           <input value={query} onChange={e => setQuery(e.target.value)}
             placeholder="搜索插件名称 / 描述…"
             className="flex-1 px-3 py-2 text-xs border border-[#e2e8f0] rounded-lg outline-none focus:border-[#2563eb]" />
@@ -199,13 +183,13 @@ export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
       {/* 列表 */}
       {loading && !items && (
         <div className="card p-8 text-center text-xs text-[#94a3b8] flex items-center justify-center gap-2">
-          <Spinner /> 正在扫描 @{owner} 的仓库…
+          <Spinner /> 正在读取内置插件清单…
         </div>
       )}
 
       {filtered && filtered.length === 0 && !loading && (
         <div className="card p-6 space-y-3">
-          <p className="text-sm font-medium text-[#0f172a]">@{owner} 下没有发现 PenMods 插件</p>
+          <p className="text-sm font-medium text-[#0f172a]">内置清单里暂时没有可用的插件</p>
           <p className="text-[11px] text-[#64748b] leading-relaxed">
             插件市场通过仓库里的 <code className="bg-[#f1f5f9] px-1 rounded">metadata.json</code> 识别插件。
             把你的插件推送到 GitHub，并在仓库根目录（或 plugin/、src/ 子目录）放一个 metadata.json 即可：
@@ -220,7 +204,8 @@ export function PluginMarket({ conn, connected, onLog }: PluginMarketProps) {
   "main_qml": "main.qml"
 }`}</pre>
           <p className="text-[11px] text-[#94a3b8]">
-            提示：换成自己的用户名试试，或点「设置」用 ZIP 直链安装。当前源：@{owner}
+            想加插件就把它加到 <code className="bg-[#f1f5f9] px-1 rounded">app/src/lib/market.ts</code> 的
+            <code className="bg-[#f1f5f9] px-1 rounded">FEATURED_PLUGINS</code>；也可以点「设置」用 ZIP 直链安装。
           </p>
         </div>
       )}
