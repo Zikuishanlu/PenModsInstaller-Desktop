@@ -1,0 +1,9 @@
+{
+    "id": "__PLUGIN_ID__",
+    "name": "__PLUGIN_NAME__",
+    "version": "__PLUGIN_VERSION__",
+    "author": "__PLUGIN_AUTHOR__",
+    "description": "__PLUGIN_DESC__",
+    "main_qml": "Main.qml",
+    "main_so": "__SO_NAME__"
+}
